@@ -550,3 +550,290 @@ class TestUniversalEvaluator:
         # Max value should be 0.0 when minimizing
         norm = evaluator._normalize_score(100.0, "minimize")
         assert norm == 0.0
+
+
+class TestKnownAlgorithmDetection:
+    """Tests for known algorithm detection."""
+
+    def test_signature_matcher_basic(self):
+        """Test basic signature matching."""
+        from obsidian.research.known_algorithms import SignatureMatcher
+
+        matcher = SignatureMatcher(
+            patterns=[r"pivot", r"partition", r"quicksort"],
+            threshold=0.3,
+        )
+
+        # Code with matching patterns
+        code = """
+def quicksort(arr):
+    if len(arr) <= 1:
+        return arr
+    pivot = arr[len(arr) // 2]
+    left = [x for x in arr if x < pivot]
+    right = [x for x in arr if x > pivot]
+    return quicksort(left) + [pivot] + quicksort(right)
+"""
+        score = matcher.match(code)
+        assert score > 0.5  # Should match at least 2/3 patterns
+
+        # Code without matching patterns
+        code_other = "def add(a, b): return a + b"
+        score_other = matcher.match(code_other)
+        assert score_other == 0.0
+
+    def test_keyword_matcher(self):
+        """Test keyword matching."""
+        from obsidian.research.known_algorithms import KeywordMatcher
+
+        matcher = KeywordMatcher(
+            keywords=["strassen", "m1", "m2", "m3"],
+            threshold=0.25,
+        )
+
+        code = """
+def strassen_multiply(a, b):
+    m1 = (a[0][0] + a[1][1]) * (b[0][0] + b[1][1])
+    m2 = (a[1][0] + a[1][1]) * b[0][0]
+"""
+        score = matcher.match(code)
+        assert score > 0  # Should match strassen, m1, m2
+
+    def test_behavioral_matcher(self):
+        """Test behavioral matching."""
+        from obsidian.research.known_algorithms import BehavioralMatcher
+
+        matcher = BehavioralMatcher(
+            expected_behavior={
+                "metrics.multiplications.count": 7,
+            },
+            tolerance=0,
+        )
+
+        # Matching behavior (Strassen uses 7 multiplications)
+        behavioral_data = {"metrics": {"multiplications": {"count": 7}}}
+        score = matcher.match("", behavioral_data)
+        assert score == 1.0
+
+        # Non-matching behavior (naive uses 8)
+        behavioral_data_naive = {"metrics": {"multiplications": {"count": 8}}}
+        score_naive = matcher.match("", behavioral_data_naive)
+        assert score_naive == 0.0
+
+    def test_known_algorithm_detector(self):
+        """Test full algorithm detection."""
+        from obsidian.research.known_algorithms import (
+            KnownAlgorithm,
+            KnownAlgorithmDetector,
+            SignatureMatcher,
+            KeywordMatcher,
+        )
+
+        strassen = KnownAlgorithm(
+            name="strassen",
+            description="Strassen's matrix multiplication",
+            patterns=[
+                SignatureMatcher(
+                    patterns=[r"m1\s*=", r"m2\s*=", r"m3\s*="],
+                    threshold=0.4,
+                ),
+                KeywordMatcher(
+                    keywords=["strassen", "m1", "m2", "m3", "m4", "m5", "m6", "m7"],
+                    threshold=0.3,
+                ),
+            ],
+            penalty=0.9,
+        )
+
+        detector = KnownAlgorithmDetector([strassen])
+
+        # Strassen-like code
+        strassen_code = """
+def strassen(a, b):
+    m1 = (a[0][0] + a[1][1]) * (b[0][0] + b[1][1])
+    m2 = (a[1][0] + a[1][1]) * b[0][0]
+    m3 = a[0][0] * (b[0][1] - b[1][1])
+    m4 = a[1][1] * (b[1][0] - b[0][0])
+    m5 = (a[0][0] + a[0][1]) * b[1][1]
+    m6 = (a[1][0] - a[0][0]) * (b[0][0] + b[0][1])
+    m7 = (a[0][1] - a[1][1]) * (b[1][0] + b[1][1])
+"""
+        result = detector.detect(strassen_code, confidence_threshold=0.3)
+        assert result.is_known
+        assert result.algorithm_name == "strassen"
+        assert result.penalty > 0
+
+    def test_penalty_computation(self):
+        """Test score penalty computation."""
+        from obsidian.research.known_algorithms import (
+            KnownAlgorithmDetector,
+            DetectionResult,
+        )
+
+        detector = KnownAlgorithmDetector()
+
+        # Test multiplicative penalty
+        detection = DetectionResult(
+            is_known=True,
+            algorithm_name="strassen",
+            confidence=0.9,
+            penalty=0.9,  # 90% penalty
+        )
+
+        base_score = 1.0
+        penalized = detector.compute_penalized_score(
+            base_score, detection, penalty_mode="multiplicative"
+        )
+        assert abs(penalized - 0.1) < 0.01  # 1.0 * (1 - 0.9) = 0.1
+
+    def test_matmul_database(self):
+        """Test matrix multiplication algorithm database."""
+        from obsidian.research.known_algorithms_db import get_algorithm
+
+        strassen = get_algorithm("strassen")
+        assert strassen is not None
+        assert strassen.name == "strassen"
+        assert strassen.penalty > 0.8  # High penalty
+
+        winograd = get_algorithm("winograd")
+        assert winograd is not None
+
+        naive = get_algorithm("naive")
+        assert naive is not None
+
+    def test_sorting_database(self):
+        """Test sorting algorithm database."""
+        from obsidian.research.known_algorithms_db import get_algorithm
+
+        quicksort = get_algorithm("quicksort")
+        assert quicksort is not None
+        assert "pivot" in str(quicksort.patterns)
+
+        mergesort = get_algorithm("mergesort")
+        assert mergesort is not None
+
+    def test_create_detector_from_config(self):
+        """Test creating detector from config."""
+        from obsidian.research.known_algorithms import create_detector_from_config
+
+        detector = create_detector_from_config(["strassen", "winograd", "naive"])
+        assert len(detector.algorithms) == 3
+
+        algorithm_names = [a.name for a in detector.algorithms]
+        assert "strassen" in algorithm_names
+        assert "winograd" in algorithm_names
+        assert "naive" in algorithm_names
+
+    def test_no_false_positives(self):
+        """Test that unrelated code doesn't trigger detection."""
+        from obsidian.research.known_algorithms import create_detector_from_config
+
+        detector = create_detector_from_config(["strassen", "quicksort"])
+
+        # Generic code that shouldn't match
+        generic_code = """
+def fibonacci(n):
+    if n <= 1:
+        return n
+    return fibonacci(n-1) + fibonacci(n-2)
+
+def factorial(n):
+    result = 1
+    for i in range(2, n + 1):
+        result *= i
+    return result
+"""
+        result = detector.detect(generic_code, confidence_threshold=0.5)
+        assert not result.is_known
+        assert result.penalty == 0
+
+    def test_dynamic_definitions(self):
+        """Test creating detector from dynamic definitions (Claude-generated)."""
+        from obsidian.research.known_algorithms import create_detector_from_definitions
+        from obsidian.research.problem import AlgorithmDefinition
+
+        # Simulate what Claude would generate during research-init
+        definitions = [
+            AlgorithmDefinition(
+                name="dijkstra",
+                description="Shortest path with priority queue",
+                penalty=0.85,
+                keywords=["dijkstra", "priority", "visited", "distance", "neighbors"],
+                patterns=[r"heapq", r"priority.*queue", r"visited\s*=\s*set"],
+            ),
+            AlgorithmDefinition(
+                name="bellman_ford",
+                description="Shortest path with negative edges",
+                penalty=0.8,
+                keywords=["bellman", "ford", "relax", "edges"],
+                patterns=[r"for.*range.*V.*-.*1", r"relax"],
+            ),
+        ]
+
+        detector = create_detector_from_definitions(definitions)
+        assert len(detector.algorithms) == 2
+
+        # Test detection of Dijkstra-like code
+        dijkstra_code = """
+import heapq
+
+def dijkstra(graph, start):
+    visited = set()
+    distance = {node: float('inf') for node in graph}
+    distance[start] = 0
+    priority_queue = [(0, start)]
+
+    while priority_queue:
+        dist, node = heapq.heappop(priority_queue)
+        if node in visited:
+            continue
+        visited.add(node)
+        for neighbor, weight in graph[node]:
+            if distance[neighbor] > dist + weight:
+                distance[neighbor] = dist + weight
+                heapq.heappush(priority_queue, (distance[neighbor], neighbor))
+"""
+        result = detector.detect(dijkstra_code, confidence_threshold=0.3)
+        assert result.is_known
+        assert result.algorithm_name == "dijkstra"
+        assert result.penalty > 0
+
+    def test_yaml_definitions_parsing(self):
+        """Test parsing algorithm definitions from YAML."""
+        import tempfile
+        from obsidian.research.problem import load_problem
+
+        yaml_content = """
+problem:
+  name: "Graph Algorithm Discovery"
+  description: "Find novel shortest path algorithm"
+
+evaluator:
+  novelty:
+    known_algorithms:
+      enabled: true
+      confidence_threshold: 0.5
+      definitions:
+        - name: "dijkstra"
+          description: "Priority queue based"
+          penalty: 0.85
+          keywords: ["dijkstra", "priority", "visited"]
+          patterns: ["heapq", "priority.*queue"]
+        - name: "astar"
+          description: "Heuristic search"
+          penalty: 0.8
+          keywords: ["astar", "heuristic", "f_score"]
+"""
+        with tempfile.NamedTemporaryFile(mode="w", suffix=".yaml", delete=False) as f:
+            f.write(yaml_content)
+            f.flush()
+
+            spec = load_problem(f.name)
+
+            assert spec.novelty.known_algorithms.enabled
+            assert len(spec.novelty.known_algorithms.definitions) == 2
+
+            dijkstra = spec.novelty.known_algorithms.definitions[0]
+            assert dijkstra.name == "dijkstra"
+            assert dijkstra.penalty == 0.85
+            assert "priority" in dijkstra.keywords

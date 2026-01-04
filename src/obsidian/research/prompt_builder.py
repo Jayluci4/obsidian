@@ -34,11 +34,13 @@ class ResearchPromptBuilder:
 
     def build_system_prompt(self) -> str:
         """Build system prompt with problem specification."""
+        known_algo_warning = self._format_known_algorithm_warning()
+
         return f"""You are an algorithm researcher working on: {self.problem.name}
 
 PROBLEM DESCRIPTION:
 {self.problem.description}
-
+{known_algo_warning}
 SOLUTION REQUIREMENTS:
 - Write the solution to: {self.problem.solution_file}
 - The solution must pass correctness tests
@@ -51,10 +53,42 @@ EVALUATION CRITERIA:
 - Correctness ({self.problem.weights.correctness:.0%}): Must pass all tests
 - Benchmark ({self.problem.weights.benchmark:.0%}): {self.problem.benchmark.direction} the score
 - Novelty ({self.problem.weights.novelty:.0%}): Different from existing solutions
+- Known Algorithm Penalty: SEVERE penalty for implementing known algorithms
 
 OUTPUT FORMAT:
 When you generate a solution, write the complete code to {self.problem.solution_file}.
 Do not explain or discuss - just write the code.
+"""
+
+    def _format_known_algorithm_warning(self) -> str:
+        """Format warning about known algorithms."""
+        config = self.problem.novelty.known_algorithms
+        if not config.enabled:
+            return ""
+
+        # Check for dynamic definitions first (preferred)
+        if config.definitions:
+            algo_lines = []
+            for defn in config.definitions:
+                penalty_pct = int(defn.penalty * 100)
+                algo_lines.append(f"  - {defn.name}: {defn.description} ({penalty_pct}% penalty)")
+            algo_list = "\n".join(algo_lines)
+        elif config.algorithms:
+            # Legacy fallback
+            algo_list = "\n".join(f"  - {algo}" for algo in config.algorithms)
+        else:
+            return ""
+
+        return f"""
+KNOWN ALGORITHM WARNING:
+The following algorithms are KNOWN and will receive SEVERE SCORE PENALTIES:
+{algo_list}
+
+DO NOT implement these algorithms or close variations of them.
+Think fundamentally differently. Start from first principles.
+The goal is to discover NEW algorithms, not re-implement existing ones.
+
+Your solution MUST be genuinely novel to score well.
 """
 
     def _format_interface(self) -> str:
@@ -271,9 +305,18 @@ Benchmark:
         if evaluation.novelty:
             novelty_info = f"\nNovelty score: {evaluation.novelty.score:.4f}"
 
+        known_algo_info = ""
+        if evaluation.known_algorithm and evaluation.known_algorithm.is_known:
+            known_algo_info = f"""
+
+KNOWN ALGORITHM DETECTED: {evaluation.known_algorithm.algorithm_name}
+Confidence: {evaluation.known_algorithm.confidence:.0%}
+Penalty Applied: {evaluation.known_algorithm.penalty:.0%}
+Your score was SEVERELY reduced. Try a COMPLETELY different approach."""
+
         return f"""LAST EVALUATION: PASSED
 - Composite score: {evaluation.score:.4f}
-- Correctness: {evaluation.correctness.score:.4f}{benchmark_info}{novelty_info}
+- Correctness: {evaluation.correctness.score:.4f}{benchmark_info}{novelty_info}{known_algo_info}
 """
 
     def _format_action_instruction(self, operation: "OperationContext") -> str:
@@ -335,11 +378,28 @@ Your solution did not pass correctness tests.
 Please fix the issues and try again.
 """
 
+        # Check for known algorithm detection
+        known_algo_warning = ""
+        if evaluation.known_algorithm and evaluation.known_algorithm.is_known:
+            known_algo_warning = f"""
+KNOWN ALGORITHM DETECTED: {evaluation.known_algorithm.algorithm_name}
+Confidence: {evaluation.known_algorithm.confidence:.0%}
+Penalty Applied: {evaluation.known_algorithm.penalty:.0%}
+
+Your solution implements a KNOWN algorithm. This received a SEVERE score penalty.
+You MUST try a fundamentally different approach. Do not just rename variables or
+restructure the same algorithm. Think from first principles.
+"""
+
         # Determine if this was a good solution
         is_best = evaluation.score >= stats.get("best_score", 0)
         is_good = evaluation.score >= stats.get("avg_score", 0)
 
         status = "NEW BEST" if is_best else ("GOOD" if is_good else "BELOW AVERAGE")
+
+        # Override status if known algorithm was detected
+        if evaluation.known_algorithm and evaluation.known_algorithm.is_known:
+            status = "PENALIZED - KNOWN ALGORITHM"
 
         return f"""EVALUATION RESULT: {status}
 
@@ -347,7 +407,7 @@ Score: {evaluation.score:.4f}
 - Correctness: {evaluation.correctness.score:.4f}
 - Benchmark: {evaluation.benchmark.normalized_score:.4f} (raw: {evaluation.benchmark.raw_score})
 - Novelty: {evaluation.novelty.score:.4f}
-
+{known_algo_warning}
 Archive Status:
 - Best score: {stats['best_score']:.4f}
 - Average: {stats['avg_score']:.4f}
