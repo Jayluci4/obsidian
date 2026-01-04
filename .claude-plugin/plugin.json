@@ -1,0 +1,6 @@
+{
+  "name": "obsidian",
+  "version": "0.1.0",
+  "description": "Obsessive learning loop with ICRL feedback for code quality improvement",
+  "hooks": "../hooks/hooks.json"
+}

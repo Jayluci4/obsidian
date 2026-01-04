@@ -1,0 +1,219 @@
+# Obsidian Plugin Configuration
+
+# ==============================================================================
+# LEARNING LOOP SETTINGS
+# ==============================================================================
+max_attempts: 10
+success_threshold: 0.90
+
+# ==============================================================================
+# EVALUATOR CONFIGURATION
+# ==============================================================================
+evaluator:
+  # Metric weights (must sum to 1.0 for enabled metrics)
+  weights:
+    pytest: 0.60
+    coverage: 0.40
+    ruff: 0.00      # Disabled by default
+    pyright: 0.00   # Disabled by default
+
+  pytest:
+    enabled: true
+    timeout: 120
+    args: ["--tb=short", "-q"]
+    weight: 0.60  # Explicit weight (overrides global weights)
+
+  coverage:
+    enabled: true
+    source: "src"
+    threshold: 70   # Minimum acceptable coverage %
+    timeout: 180
+    weight: 0.40
+
+  ruff:
+    enabled: false
+    max_errors: 100
+    timeout: 30
+    source: "src"
+    weight: 0.00
+
+  pyright:
+    enabled: false
+    max_errors: 50
+    timeout: 60
+    source: "src"
+    weight: 0.00
+
+# ==============================================================================
+# IN-CONTEXT REINFORCEMENT LEARNING (ICRL)
+# ==============================================================================
+icrl:
+  enabled: true
+
+  # Episode selection for context injection
+  top_k: 5                      # Number of episodes to include
+  include_failures: true        # Include informative failures
+
+  # Context budget management (Claude Opus 4.5 has 200k token limit)
+  max_context_tokens: 10000     # Max tokens for ICRL context (~5% of limit)
+  compression_threshold: 20     # Compress episodes older than N attempts
+
+  # Episode filtering strategy
+  filter_strategy: "quality_diversity"  # Options: "top_k", "quality_diversity", "recent"
+  top_k_ratio: 0.6              # 60% top performers
+  failure_ratio: 0.2            # 20% informative failures
+  diversity_ratio: 0.2          # 20% diverse approaches
+
+# ==============================================================================
+# CIRCUIT BREAKER SETTINGS
+# ==============================================================================
+circuit_breaker:
+  enabled: true
+
+  # Thresholds for opening circuit (halting execution)
+  no_progress_threshold: 3      # Open after N loops with no file changes
+  same_error_threshold: 5       # Open after N loops with identical errors
+  reward_decline_threshold: 0.1 # Open if reward declines by >10%
+
+  # Half-open state (recovery monitoring)
+  half_open_threshold: 2        # Enter monitoring after N no-progress loops
+
+# ==============================================================================
+# STRATEGY CONTROLLER
+# ==============================================================================
+strategy:
+  # Mode selection thresholds
+  improve_threshold: 0.05       # Switch to EXPLOIT if trend > 5%
+  decline_threshold: -0.05      # Switch to EXPLORE if trend < -5%
+
+  # Stuck detection
+  stuck_threshold: 0.02         # Variance threshold for "stuck" pattern
+  min_variance_window: 3        # Window size for variance calculation
+
+  # Mode switching constraints
+  max_consecutive_mode: 5       # Force mode switch after N consecutive
+
+# ==============================================================================
+# PERFORMANCE SETTINGS
+# ==============================================================================
+performance:
+  # Parallel evaluation
+  parallel_evaluators: true     # Run evaluators in parallel
+  max_workers: 4                # Thread pool size
+
+  # Caching
+  cache_enabled: false          # Cache evaluation results (not implemented yet)
+  cache_by_file_hash: false     # Cache based on file content hash
+
+# ==============================================================================
+# STATE MANAGEMENT
+# ==============================================================================
+# State directory (relative to project root)
+state_dir: ".obsidian"
+
+# Database settings
+database:
+  # SQLite optimization
+  journal_mode: "WAL"          # Write-Ahead Logging for better concurrency
+  synchronous: "NORMAL"        # Balance between safety and performance
+  cache_size: -64000           # 64MB cache
+
+# ==============================================================================
+# FEEDBACK FORMATTING
+# ==============================================================================
+feedback:
+  include_failed_tests: true
+  max_failures_shown: 5
+  include_coverage_delta: true
+
+  # Verbosity
+  verbose: false                # Show detailed metrics
+  show_circuit_status: true     # Show circuit breaker state
+  show_strategy_mode: true      # Show current strategy mode
+
+  # Feedback compression
+  compress_old_feedback: false  # Compress feedback from old iterations
+
+# ==============================================================================
+# LOGGING CONFIGURATION
+# ==============================================================================
+logging:
+  enabled: true
+  level: "INFO"                # DEBUG, INFO, WARN, ERROR
+  file: "obsidian.log"
+  max_size_mb: 10              # Rotate after 10MB
+  backup_count: 3              # Keep 3 backup files
+
+  # Log structured data
+  json_format: false           # Use JSON format for logs
+
+  # What to log
+  log_evaluations: true        # Log each evaluation
+  log_state_changes: true      # Log state transitions
+  log_circuit_breaker: true    # Log circuit breaker events
+  log_strategy_changes: true   # Log strategy mode changes
+
+# ==============================================================================
+# RESPONSE ANALYSIS
+# ==============================================================================
+response_analysis:
+  enabled: true
+
+  # Completion detection
+  completion_threshold: 40      # Confidence threshold for exit signal (0-100)
+  stuck_error_count: 5          # Errors to consider "stuck"
+
+  # Pattern matching
+  detect_test_only: true        # Detect test-only loops
+  detect_no_work: true          # Detect "nothing to do" patterns
+  detect_stuck: true            # Detect repeating error patterns
+
+# ==============================================================================
+# ERROR HANDLING
+# ==============================================================================
+error_handling:
+  # Retry logic
+  max_retries: 3               # Max retries for transient failures
+  retry_delay_seconds: 5       # Delay between retries
+
+  # Timeout protection
+  global_timeout_seconds: 300  # Max time for entire stop hook (5 minutes)
+
+  # Graceful degradation
+  continue_on_evaluator_failure: true  # Continue if one evaluator fails
+  fallback_reward: 0.0         # Reward if all evaluators fail
+
+# ==============================================================================
+# HOOKS CONFIGURATION
+# ==============================================================================
+hooks:
+  session_start:
+    enabled: true
+    timeout: 10
+
+  stop:
+    enabled: true
+    timeout: 300               # 5 minutes for full evaluation
+
+  # Future hooks
+  post_tool_use:
+    enabled: false
+
+# ==============================================================================
+# ADVANCED SETTINGS
+# ==============================================================================
+advanced:
+  # Memory management
+  prune_old_episodes: true     # Remove very old episodes (>100 attempts)
+  prune_threshold: 100
+
+  # Semantic memory
+  semantic_confidence_threshold: 0.5  # Min confidence to keep facts
+  semantic_decay_rate: 0.95    # Decay rate for unused facts
+
+  # Procedural memory
+  track_strategy_effectiveness: true
+
+  # Debug mode
+  debug: false                 # Enable debug mode (verbose output)
+  dry_run: false              # Dry run mode (don't actually block)
