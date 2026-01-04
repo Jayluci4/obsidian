@@ -2,32 +2,59 @@
 
 Obsessive learning loop plugin for Claude Code with In-Context Reinforcement Learning (ICRL).
 
-## Overview
+## What is Obsidian?
 
-Obsidian enables Claude Code to obsess over problems like humans do - iterating, learning from feedback, and improving until goals are achieved. It supports two modes:
+Obsidian enables Claude Code to obsess over problems like humans do - iterating, learning from feedback, and improving until goals are achieved.
 
 | Mode | Use Case | Configuration |
 |------|----------|---------------|
 | **Standard Mode** | Fix tests, improve coverage | `obsidian.yaml` |
 | **Research Mode** | Discover novel algorithms | `problem.yaml` |
 
-## Quick Start
+## Installation
 
-### Installation
+### Step 1: Install Python Package
 
 ```bash
-# Install the Python package
 pip install -e /path/to/obsidian
+```
 
-# Start Claude Code with Obsidian plugin
+### Step 2: Add Plugin to Claude Code
+
+**Option A: Via Marketplace (Recommended)**
+
+Inside Claude Code, run:
+```
+/plugin marketplace add /path/to/obsidian
+/plugin install obsidian@obsidian-marketplace
+```
+
+Or if hosted on GitHub:
+```
+/plugin marketplace add username/obsidian
+/plugin install obsidian@obsidian-marketplace
+```
+
+**Option B: Direct Load**
+
+```bash
 claude --plugin-dir /path/to/obsidian
 ```
 
-### Standard Mode (Test-Driven Learning)
+### Step 3: Verify Installation
 
-```bash
-# In your project, create obsidian.yaml
-cat > obsidian.yaml << 'EOF'
+Inside Claude Code, run:
+```
+/obsidian:status
+```
+
+## Quick Start
+
+### Standard Mode: Fix Failing Tests
+
+1. Create `obsidian.yaml` in your project:
+
+```yaml
 max_attempts: 10
 success_threshold: 0.90
 evaluator:
@@ -36,36 +63,47 @@ evaluator:
   coverage:
     enabled: true
     source: "src"
-EOF
-
-# Start Claude Code with Obsidian
-claude --plugin-dir /path/to/obsidian
-
-# Give Claude a task like "Fix the failing tests"
-# Obsidian will loop until tests pass!
 ```
 
-### Research Mode (Algorithm Discovery)
+2. Start Claude Code and give it a task:
 
-```bash
-# Initialize a research problem using the slash command
+```
+Fix the failing tests
+```
+
+Obsidian will automatically:
+- Run tests after each attempt
+- Block Claude from stopping until tests pass
+- Inject feedback to guide improvements
+
+### Research Mode: Discover Algorithms
+
+1. Initialize a research problem:
+
+```
 /obsidian:research-init algorithm
-
-# Or use the CLI
-obsidian research init --template algorithm --name "Novel Sorting"
-
-# Edit problem.yaml, create tests, implement benchmark.py
-
-# Start Claude Code with Obsidian
-claude --plugin-dir /path/to/obsidian
-
-# Give it: "Discover an efficient sorting algorithm"
-# Obsidian will iterate, storing discoveries in a quality-diversity archive
 ```
+
+Or via CLI:
+```bash
+obsidian research init --template algorithm --name "My Algorithm"
+```
+
+2. Edit the generated files:
+   - `problem.yaml` - Problem specification
+   - `solution.py` - Initial solution (can be empty)
+   - `tests/` - Correctness tests
+   - `benchmark.py` - Performance benchmark
+
+3. Start Claude Code and give it a task:
+
+```
+Discover an efficient sorting algorithm that beats the baseline
+```
+
+Obsidian will iterate for hundreds of attempts, storing discoveries in a MAP-Elites archive.
 
 ## Plugin Commands
-
-When Obsidian is loaded as a plugin, these slash commands are available:
 
 | Command | Description |
 |---------|-------------|
@@ -75,66 +113,26 @@ When Obsidian is loaded as a plugin, these slash commands are available:
 | `/obsidian:research-status` | Show research progress |
 | `/obsidian:research-export` | Export best solutions |
 
-## Modes
-
-### Standard Mode
-
-For code quality improvement:
-- **Evaluators**: pytest, coverage, ruff, pyright
-- **Reward**: Weighted composite score
-- **Memory**: Episodic (past attempts with outcomes)
-- **Strategy**: Explore/Exploit switching
-
-### Research Mode
-
-For algorithm discovery:
-- **Evaluators**: User-defined (correctness, benchmark, novelty)
-- **Archive**: MAP-Elites quality-diversity
-- **Evolution**: Mutation, crossover, exploration, exploitation
-- **Scale**: 1000+ iterations with checkpointing
-
-## CLI Commands
-
-```bash
-# Standard Mode
-obsidian status              # Session status
-obsidian history             # View attempt history
-obsidian stats               # Statistics
-obsidian reset circuit       # Reset circuit breaker
-obsidian config validate     # Validate configuration
-
-# Research Mode
-obsidian research init       # Initialize research problem
-obsidian research status     # Show progress
-obsidian research archive    # View solution archive
-obsidian research export     # Export best solutions
-obsidian research reset      # Reset research state
-```
-
 ## How It Works
 
-### The Learning Loop
-
-1. **Claude makes changes** to the codebase
-2. **Stop hook triggers** when Claude tries to stop
-3. **Evaluators run** (tests, benchmarks)
-4. **Reward computed** from scores
-5. **Decision**:
-   - Target achieved → Allow stop
-   - Not achieved → Exit code 2 (block, inject feedback)
-6. **Claude continues** with feedback
-
-### ICRL (In-Context Reinforcement Learning)
-
-- Past attempts with rewards injected as context
-- Claude learns what works and what doesn't
-- Strategy adapts based on reward trends
-
-### Quality-Diversity (Research Mode)
-
-- MAP-Elites archive stores solutions by niche
-- Evolutionary operations guide exploration
-- Novelty rewarded to encourage diversity
+```
+┌─────────────────────────────────────────────────┐
+│  1. Claude makes changes to code                │
+│                    ↓                            │
+│  2. Claude tries to stop                        │
+│                    ↓                            │
+│  3. Obsidian Stop Hook triggers                 │
+│     • Runs evaluators (pytest, benchmark)       │
+│     • Computes reward score                     │
+│                    ↓                            │
+│  4. Decision:                                   │
+│     • Target achieved? → Allow stop             │
+│     • Not achieved? → Block + inject feedback   │
+│                    ↓                            │
+│  5. Claude continues with ICRL context          │
+│     (past attempts + rewards + strategy)        │
+└─────────────────────────────────────────────────┘
+```
 
 ## Configuration
 
@@ -186,34 +184,40 @@ loop:
   max_iterations: 1000
 ```
 
-## Project Structure
+## CLI Commands
 
+```bash
+# Standard Mode
+obsidian status              # Session status
+obsidian history             # View attempt history
+obsidian stats               # Statistics
+obsidian reset circuit       # Reset circuit breaker
+obsidian config validate     # Validate configuration
+
+# Research Mode
+obsidian research init       # Initialize research problem
+obsidian research status     # Show progress
+obsidian research archive    # View solution archive
+obsidian research export     # Export best solutions
+obsidian research reset      # Reset research state
 ```
-obsidian/
-├── src/obsidian/
-│   ├── cli.py              # CLI commands
-│   ├── config.py           # Configuration
-│   ├── evaluator/          # Pytest, coverage, etc.
-│   ├── memory/             # Episode storage
-│   ├── strategy/           # Circuit breaker, modes
-│   ├── icrl/               # Context building
-│   ├── research/           # Research mode (MAP-Elites, evolution)
-│   └── logging.py          # Structured logging
-├── scripts/
-│   ├── stop_hook.py        # Standard mode hook
-│   ├── session_start.py    # Context injection
-│   └── research_hook.py    # Research mode hook
-├── hooks/
-│   └── hooks.json          # Hook configuration
-├── examples/
-│   └── sorting/            # Research mode example
-├── tests/                  # 143 tests
-└── docs/                   # Documentation
+
+## Research Mode Templates
+
+```bash
+obsidian research init --template algorithm      # Sorting, search, graph
+obsidian research init --template ml_model       # Neural network design
+obsidian research init --template optimization   # Mathematical optimization
+obsidian research init --template custom         # Custom problem
 ```
+
+## Examples
+
+See `examples/` directory:
+- `examples/sorting/` - Algorithm discovery example
 
 ## Documentation
 
-- [Installation Guide](docs/INSTALLATION.md)
 - [Configuration Reference](docs/CONFIGURATION.md)
 - [Architecture Overview](docs/ARCHITECTURE.md)
 - [Troubleshooting](docs/TROUBLESHOOTING.md)
@@ -223,15 +227,6 @@ obsidian/
 - Python 3.10+
 - Claude Code CLI
 - pytest (for evaluation)
-
-## Research Mode Templates
-
-```bash
-obsidian research init --template algorithm      # Algorithm discovery
-obsidian research init --template ml_model       # ML model design
-obsidian research init --template optimization   # Optimization problems
-obsidian research init --template custom         # Custom problem
-```
 
 ## License
 
