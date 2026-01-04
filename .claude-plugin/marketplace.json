@@ -1,0 +1,25 @@
+{
+  "name": "obsidian-marketplace",
+  "owner": {
+    "name": "Jayant Lohia",
+    "email": "jayant@startt.in"
+  },
+  "metadata": {
+    "description": "Obsidian - ICRL learning loop plugin for Claude Code",
+    "version": "1.0.0"
+  },
+  "plugins": [
+    {
+      "name": "obsidian",
+      "source": "./",
+      "description": "Obsessive learning loop with In-Context Reinforcement Learning (ICRL) for code quality improvement and algorithm discovery",
+      "version": "1.0.0",
+      "author": {
+        "name": "Jayant Lohia"
+      },
+      "keywords": ["icrl", "learning-loop", "code-quality", "algorithm-discovery", "map-elites", "research"],
+      "category": "productivity",
+      "license": "MIT"
+    }
+  ]
+}
