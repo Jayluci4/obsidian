@@ -13,12 +13,19 @@ Obsidian enables Claude Code to obsess over problems like humans do - iterating,
 
 ## Quick Start
 
+### Installation
+
+```bash
+# Install the Python package
+pip install -e /path/to/obsidian
+
+# Start Claude Code with Obsidian plugin
+claude --plugin-dir /path/to/obsidian
+```
+
 ### Standard Mode (Test-Driven Learning)
 
 ```bash
-# Install
-pip install -e /path/to/obsidian
-
 # In your project, create obsidian.yaml
 cat > obsidian.yaml << 'EOF'
 max_attempts: 10
@@ -31,32 +38,42 @@ evaluator:
     source: "src"
 EOF
 
-# Copy hooks to your project
-mkdir -p hooks
-cat > hooks/hooks.json << 'EOF'
-{
-  "hooks": {
-    "Stop": [{"hooks": [{"type": "command", "command": "python3 /path/to/obsidian/scripts/stop_hook.py", "timeout": 300}]}],
-    "SessionStart": [{"hooks": [{"type": "command", "command": "python3 /path/to/obsidian/scripts/session_start.py", "timeout": 10}]}]
-  }
-}
-EOF
+# Start Claude Code with Obsidian
+claude --plugin-dir /path/to/obsidian
 
-# Start Claude Code - it will loop until tests pass!
+# Give Claude a task like "Fix the failing tests"
+# Obsidian will loop until tests pass!
 ```
 
 ### Research Mode (Algorithm Discovery)
 
 ```bash
-# Initialize a research problem
+# Initialize a research problem using the slash command
+/obsidian:research-init algorithm
+
+# Or use the CLI
 obsidian research init --template algorithm --name "Novel Sorting"
 
 # Edit problem.yaml, create tests, implement benchmark.py
 
-# Start Claude Code
+# Start Claude Code with Obsidian
+claude --plugin-dir /path/to/obsidian
+
 # Give it: "Discover an efficient sorting algorithm"
 # Obsidian will iterate, storing discoveries in a quality-diversity archive
 ```
+
+## Plugin Commands
+
+When Obsidian is loaded as a plugin, these slash commands are available:
+
+| Command | Description |
+|---------|-------------|
+| `/obsidian:status` | Show current learning loop status |
+| `/obsidian:history` | View attempt history |
+| `/obsidian:research-init` | Initialize a research problem |
+| `/obsidian:research-status` | Show research progress |
+| `/obsidian:research-export` | Export best solutions |
 
 ## Modes
 

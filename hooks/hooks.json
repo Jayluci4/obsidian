@@ -5,7 +5,7 @@
         "hooks": [
           {
             "type": "command",
-            "command": "python3 \"$CLAUDE_PROJECT_DIR\"/scripts/session_start.py",
+            "command": "python3 ${CLAUDE_PLUGIN_ROOT}/scripts/session_start.py",
             "timeout": 10
           }
         ]
@@ -16,7 +16,7 @@
         "hooks": [
           {
             "type": "command",
-            "command": "python3 \"$CLAUDE_PROJECT_DIR\"/scripts/unified_stop_hook.py",
+            "command": "python3 ${CLAUDE_PLUGIN_ROOT}/scripts/unified_stop_hook.py",
             "timeout": 300
           }
         ]

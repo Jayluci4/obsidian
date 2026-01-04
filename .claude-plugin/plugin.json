@@ -1,6 +1,10 @@
 {
   "name": "obsidian",
-  "version": "0.1.0",
-  "description": "Obsessive learning loop with ICRL feedback for code quality improvement",
+  "version": "1.0.0",
+  "description": "Obsessive learning loop plugin with In-Context Reinforcement Learning (ICRL) for code quality improvement and algorithm discovery",
+  "author": {
+    "name": "Jayant Lohia"
+  },
+  "keywords": ["icrl", "learning-loop", "code-quality", "algorithm-discovery", "map-elites"],
   "hooks": "../hooks/hooks.json"
 }
