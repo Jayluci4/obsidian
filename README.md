@@ -109,9 +109,31 @@ Obsidian will iterate for hundreds of attempts, storing discoveries in a MAP-Eli
 |---------|-------------|
 | `/obsidian:status` | Show current learning loop status |
 | `/obsidian:history` | View attempt history |
-| `/obsidian:research-init` | Initialize a research problem |
+| `/obsidian:research-init` | Initialize and start a research problem |
 | `/obsidian:research-status` | Show research progress |
 | `/obsidian:research-export` | Export best solutions |
+
+### Research Init Syntax
+
+```
+/obsidian:research-init "your prompt here" --max-loops N --target SCORE
+```
+
+**Parameters:**
+- `"prompt"` - The research task description (required)
+- `--max-loops` - Maximum iterations (default: 100)
+- `--target` - Target score 0.0-1.0 (default: 0.9)
+- `--template` - algorithm, ml_model, optimization, custom (default: algorithm)
+
+**Examples:**
+
+```
+/obsidian:research-init "Discover a 2x2 matrix multiplication using fewer than 8 multiplications" --max-loops 50 --target 0.95
+
+/obsidian:research-init "Find an efficient sorting algorithm for nearly-sorted arrays" --max-loops 100
+
+/obsidian:research-init "Design a neural network architecture for MNIST with <10k parameters" --template ml_model --max-loops 200
+```
 
 ## How It Works
 
