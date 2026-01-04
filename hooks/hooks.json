@@ -16,7 +16,7 @@
         "hooks": [
           {
             "type": "command",
-            "command": "python3 \"$CLAUDE_PROJECT_DIR\"/scripts/stop_hook.py",
+            "command": "python3 \"$CLAUDE_PROJECT_DIR\"/scripts/unified_stop_hook.py",
             "timeout": 300
           }
         ]
