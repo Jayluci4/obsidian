@@ -1,0 +1,15 @@
+{
+  "hooks": {
+    "Stop": [
+      {
+        "hooks": [
+          {
+            "type": "command",
+            "command": "python3 /home/jayantlohia16/moonshot/obsidian/scripts/research_hook.py",
+            "timeout": 300
+          }
+        ]
+      }
+    ]
+  }
+}

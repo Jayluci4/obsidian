@@ -10,6 +10,216 @@ from typing import Any
 from .config import load_config, get_state_dir, find_config_file, ObsidianConfig
 from .strategy.circuit_breaker import CircuitBreaker, CircuitState
 
+# Problem templates for research mode
+PROBLEM_TEMPLATES = {
+    "algorithm": '''# Problem: {name}
+# Discover a novel algorithm
+
+problem:
+  name: "{name}"
+  description: |
+    {description}
+
+  solution_file: "solution.py"
+  solution_interface: |
+    # Define your solution interface here
+    def solve(input_data):
+        """Your algorithm implementation."""
+        pass
+
+evaluator:
+  correctness:
+    type: "pytest"
+    command: "pytest tests/ -x -v"
+    timeout: 120
+
+  benchmark:
+    command: "python benchmark.py solution.py"
+    output_parser: "json"
+    timeout: 300
+    direction: "maximize"
+    baseline_score: 0.3
+    target_score: 0.9
+
+  weights:
+    correctness: 0.2
+    benchmark: 0.6
+    novelty: 0.2
+
+archive:
+  type: "map_elites"
+  niches:
+    - name: "approach"
+      type: "categorical"
+      values: ["greedy", "dynamic", "divide_conquer", "heuristic", "other"]
+    - name: "complexity"
+      type: "continuous"
+      bins: [0, 50, 200, 1000]
+  max_solutions_per_niche: 5
+
+loop:
+  max_iterations: 1000
+  checkpoint_every: 50
+  early_stop:
+    threshold: 0.95
+    patience: 100
+''',
+    "ml_model": '''# Problem: {name}
+# Design a machine learning model/approach
+
+problem:
+  name: "{name}"
+  description: |
+    {description}
+
+  solution_file: "model.py"
+  solution_interface: |
+    class Model:
+        def __init__(self, config=None):
+            pass
+
+        def train(self, data):
+            """Train the model."""
+            pass
+
+        def predict(self, inputs):
+            """Make predictions."""
+            pass
+
+        def evaluate(self, test_data):
+            """Return evaluation metrics."""
+            pass
+
+evaluator:
+  correctness:
+    type: "pytest"
+    command: "pytest tests/ -x -v"
+    timeout: 300
+
+  benchmark:
+    command: "python benchmark.py model.py"
+    output_parser: "json"
+    timeout: 3600
+    direction: "maximize"
+    baseline_score: 0.5
+    target_score: 0.95
+
+  weights:
+    correctness: 0.1
+    benchmark: 0.7
+    novelty: 0.2
+
+archive:
+  type: "map_elites"
+  niches:
+    - name: "architecture"
+      type: "categorical"
+      values: ["linear", "tree", "neural", "ensemble", "other"]
+    - name: "complexity"
+      type: "continuous"
+      bins: [0, 100, 1000, 10000]
+  max_solutions_per_niche: 5
+
+loop:
+  max_iterations: 500
+  checkpoint_every: 25
+  early_stop:
+    threshold: 0.98
+    patience: 50
+''',
+    "optimization": '''# Problem: {name}
+# Optimize a function or process
+
+problem:
+  name: "{name}"
+  description: |
+    {description}
+
+  solution_file: "optimizer.py"
+  solution_interface: |
+    def optimize(objective_fn, constraints, initial_guess=None):
+        """
+        Find optimal solution.
+
+        Args:
+            objective_fn: Function to minimize/maximize
+            constraints: Dict of constraints
+            initial_guess: Starting point
+
+        Returns:
+            Optimal solution and value
+        """
+        pass
+
+evaluator:
+  correctness:
+    type: "pytest"
+    command: "pytest tests/ -x -v"
+    timeout: 120
+
+  benchmark:
+    command: "python benchmark.py optimizer.py"
+    output_parser: "json"
+    timeout: 600
+    direction: "maximize"
+    baseline_score: 0.4
+    target_score: 0.9
+
+  weights:
+    correctness: 0.2
+    benchmark: 0.6
+    novelty: 0.2
+
+archive:
+  type: "map_elites"
+  niches:
+    - name: "method"
+      type: "categorical"
+      values: ["gradient", "evolutionary", "bayesian", "local_search", "other"]
+  max_solutions_per_niche: 5
+
+loop:
+  max_iterations: 500
+  checkpoint_every: 25
+''',
+    "custom": '''# Problem: {name}
+# Custom research problem
+
+problem:
+  name: "{name}"
+  description: |
+    {description}
+
+  solution_file: "solution.py"
+
+evaluator:
+  correctness:
+    type: "script"
+    command: "python check_solution.py"
+    timeout: 120
+
+  benchmark:
+    command: "python benchmark.py solution.py"
+    output_parser: "json"
+    timeout: 300
+    direction: "maximize"
+
+  weights:
+    correctness: 0.2
+    benchmark: 0.6
+    novelty: 0.2
+
+archive:
+  type: "map_elites"
+  niches: []
+  max_solutions_per_niche: 10
+
+loop:
+  max_iterations: 1000
+  checkpoint_every: 50
+''',
+}
+
 
 def get_project_path() -> Path:
     """Get the project path (current directory)."""
@@ -540,6 +750,322 @@ class ObsidianCLI:
 
         return 0
 
+    # =========================================================================
+    # RESEARCH MODE COMMANDS
+    # =========================================================================
+
+    def cmd_research(self, args: argparse.Namespace) -> int:
+        """Research subcommand handler."""
+        action = getattr(args, "research_action", None)
+
+        if action == "init":
+            return self.cmd_research_init(args)
+        elif action == "status":
+            return self.cmd_research_status(args)
+        elif action == "archive":
+            return self.cmd_research_archive(args)
+        elif action == "export":
+            return self.cmd_research_export(args)
+        elif action == "reset":
+            return self.cmd_research_reset(args)
+        else:
+            print("Usage: obsidian research <init|status|archive|export|reset>")
+            return 1
+
+    def cmd_research_init(self, args: argparse.Namespace) -> int:
+        """Initialize a new research problem."""
+        template = getattr(args, "template", "custom")
+        name = getattr(args, "name", "My Research Problem")
+        description = getattr(args, "description", "Describe your problem here")
+        output_dir = Path(getattr(args, "output", "."))
+
+        print("=" * 60)
+        print("INITIALIZING RESEARCH PROBLEM")
+        print("=" * 60)
+        print()
+
+        if template not in PROBLEM_TEMPLATES:
+            print(f"Unknown template: {template}")
+            print(f"Available: {list(PROBLEM_TEMPLATES.keys())}")
+            return 1
+
+        # Generate problem.yaml
+        problem_content = PROBLEM_TEMPLATES[template].format(
+            name=name,
+            description=description,
+        )
+
+        problem_file = output_dir / "problem.yaml"
+
+        if problem_file.exists() and not getattr(args, "force", False):
+            print(f"problem.yaml already exists. Use --force to overwrite.")
+            return 1
+
+        output_dir.mkdir(parents=True, exist_ok=True)
+        problem_file.write_text(problem_content)
+        print(f"Created: {problem_file}")
+
+        # Create tests directory
+        tests_dir = output_dir / "tests"
+        tests_dir.mkdir(exist_ok=True)
+        (tests_dir / "__init__.py").touch()
+        print(f"Created: {tests_dir}/")
+
+        # Create placeholder files
+        solution_file = output_dir / "solution.py"
+        if not solution_file.exists():
+            solution_file.write_text('"""Solution placeholder - Claude will overwrite this."""\n\ndef solve(input_data):\n    pass\n')
+            print(f"Created: {solution_file}")
+
+        benchmark_file = output_dir / "benchmark.py"
+        if not benchmark_file.exists():
+            benchmark_file.write_text('''#!/usr/bin/env python3
+"""Benchmark script - customize for your problem."""
+
+import json
+import sys
+
+def benchmark(solution_path):
+    """Run benchmark and return score."""
+    # TODO: Implement your benchmark
+    return {"score": 0.5, "details": {}}
+
+if __name__ == "__main__":
+    result = benchmark(sys.argv[1] if len(sys.argv) > 1 else "solution.py")
+    print(json.dumps(result))
+''')
+            print(f"Created: {benchmark_file}")
+
+        # Create hooks directory
+        hooks_dir = output_dir / "hooks"
+        hooks_dir.mkdir(exist_ok=True)
+
+        # Get the obsidian installation path
+        import obsidian
+        obsidian_path = Path(obsidian.__file__).parent.parent.parent
+
+        hooks_content = {
+            "hooks": {
+                "Stop": [{
+                    "hooks": [{
+                        "type": "command",
+                        "command": f"python3 {obsidian_path}/scripts/research_hook.py",
+                        "timeout": 300
+                    }]
+                }]
+            }
+        }
+
+        hooks_file = hooks_dir / "hooks.json"
+        hooks_file.write_text(json.dumps(hooks_content, indent=2))
+        print(f"Created: {hooks_file}")
+
+        print()
+        print("=" * 60)
+        print("NEXT STEPS")
+        print("=" * 60)
+        print()
+        print("1. Edit problem.yaml to define your problem")
+        print("2. Create tests in tests/ directory")
+        print("3. Implement benchmark.py")
+        print("4. Start Claude Code in this directory")
+        print("5. Claude will iterate until target achieved!")
+        print()
+
+        return 0
+
+    def cmd_research_status(self, args: argparse.Namespace) -> int:
+        """Show research mode status."""
+        print("=" * 60)
+        print("RESEARCH MODE STATUS")
+        print("=" * 60)
+        print()
+
+        # Check for problem.yaml
+        problem_file = self.project_path / "problem.yaml"
+        if not problem_file.exists():
+            print("No problem.yaml found")
+            print("Run 'obsidian research init' to create one")
+            return 1
+
+        try:
+            from .research.problem import load_problem, validate_problem
+            from .research.archive import SolutionArchive
+
+            problem = load_problem(problem_file)
+            errors = validate_problem(problem)
+
+            print(f"Problem: {problem.name}")
+            print(f"Description: {problem.description[:100]}...")
+            print()
+
+            if errors:
+                print("VALIDATION ERRORS:")
+                for err in errors:
+                    print(f"  - {err}")
+                return 1
+
+            # Load research state
+            state_file = self.state_dir / "research_state.json"
+            if state_file.exists():
+                with open(state_file) as f:
+                    state = json.load(f)
+
+                print("-" * 60)
+                print("PROGRESS")
+                print("-" * 60)
+                print(f"Iteration: {state.get('iteration', 0)} / {problem.loop.max_iterations}")
+                print(f"Best score: {state.get('best_score', 0):.4f}")
+
+                target = problem.benchmark.target_score
+                if target:
+                    print(f"Target: {target}")
+                    progress = min(1.0, state.get('best_score', 0) / target)
+                    print(f"Progress: {progress:.1%}")
+            else:
+                print("No research session started yet")
+
+            # Load archive
+            archive_db = self.state_dir / "archive.db"
+            if archive_db.exists():
+                archive = SolutionArchive(problem.archive, db_path=archive_db)
+                stats = archive.get_stats()
+
+                print()
+                print("-" * 60)
+                print("ARCHIVE")
+                print("-" * 60)
+                print(f"Total solutions: {stats['total_solutions']}")
+                print(f"Niches explored: {stats['total_niches']}")
+                print(f"Best score: {stats['best_score']:.4f}")
+                print(f"Average score: {stats['avg_score']:.4f}")
+                print(f"Coverage: {stats.get('coverage', 0):.1%}")
+
+        except Exception as e:
+            print(f"Error loading research status: {e}")
+            return 1
+
+        print()
+        return 0
+
+    def cmd_research_archive(self, args: argparse.Namespace) -> int:
+        """Show solution archive."""
+        print("=" * 60)
+        print("SOLUTION ARCHIVE")
+        print("=" * 60)
+        print()
+
+        problem_file = self.project_path / "problem.yaml"
+        if not problem_file.exists():
+            print("No problem.yaml found")
+            return 1
+
+        try:
+            from .research.problem import load_problem
+            from .research.archive import SolutionArchive
+
+            problem = load_problem(problem_file)
+            archive_db = self.state_dir / "archive.db"
+
+            if not archive_db.exists():
+                print("No archive found. Start a research session first.")
+                return 1
+
+            archive = SolutionArchive(problem.archive, db_path=archive_db)
+
+            limit = getattr(args, "limit", 10)
+            solutions = archive.get_top_k(limit)
+
+            if not solutions:
+                print("No solutions in archive")
+                return 0
+
+            for i, sol in enumerate(solutions, 1):
+                niche_str = ", ".join(f"{k}={v}" for k, v in sol.niche_values.items())
+                print(f"{i}. [{sol.id}] score={sol.score:.4f}")
+                print(f"   Niche: {niche_str}")
+                print(f"   Operation: {sol.operation}")
+                print(f"   Iteration: {sol.iteration}")
+                print()
+
+        except Exception as e:
+            print(f"Error loading archive: {e}")
+            return 1
+
+        return 0
+
+    def cmd_research_export(self, args: argparse.Namespace) -> int:
+        """Export best solution(s)."""
+        print("=" * 60)
+        print("EXPORTING SOLUTIONS")
+        print("=" * 60)
+        print()
+
+        problem_file = self.project_path / "problem.yaml"
+        if not problem_file.exists():
+            print("No problem.yaml found")
+            return 1
+
+        try:
+            from .research.problem import load_problem
+            from .research.archive import SolutionArchive
+
+            problem = load_problem(problem_file)
+            archive_db = self.state_dir / "archive.db"
+
+            if not archive_db.exists():
+                print("No archive found")
+                return 1
+
+            archive = SolutionArchive(problem.archive, db_path=archive_db)
+
+            output_dir = Path(getattr(args, "output", "exported_solutions"))
+            output_dir.mkdir(parents=True, exist_ok=True)
+
+            count = getattr(args, "count", 1)
+            solutions = archive.get_top_k(count)
+
+            for i, sol in enumerate(solutions, 1):
+                filename = f"solution_{i}_score_{sol.score:.4f}.py"
+                filepath = output_dir / filename
+                filepath.write_text(sol.code)
+                print(f"Exported: {filepath}")
+
+            print()
+            print(f"Exported {len(solutions)} solution(s) to {output_dir}")
+
+        except Exception as e:
+            print(f"Error exporting: {e}")
+            return 1
+
+        return 0
+
+    def cmd_research_reset(self, args: argparse.Namespace) -> int:
+        """Reset research state."""
+        print("=" * 60)
+        print("RESETTING RESEARCH STATE")
+        print("=" * 60)
+        print()
+
+        state_file = self.state_dir / "research_state.json"
+        archive_db = self.state_dir / "archive.db"
+
+        target = getattr(args, "target", "state")
+
+        if target in ["state", "all"]:
+            if state_file.exists():
+                state_file.unlink()
+                print("Deleted: research_state.json")
+
+        if target in ["archive", "all"]:
+            if archive_db.exists():
+                archive_db.unlink()
+                print("Deleted: archive.db")
+
+        print()
+        print("Reset complete")
+        return 0
+
 
 def create_parser() -> argparse.ArgumentParser:
     """Create the argument parser."""
@@ -612,6 +1138,96 @@ def create_parser() -> argparse.ArgumentParser:
         help="Name of evaluator to test (pytest, coverage, ruff, pyright)",
     )
 
+    # research command
+    research_parser = subparsers.add_parser(
+        "research",
+        help="Research mode commands for algorithm discovery",
+    )
+    research_subparsers = research_parser.add_subparsers(
+        dest="research_action",
+        help="Research actions",
+    )
+
+    # research init
+    research_init = research_subparsers.add_parser(
+        "init",
+        help="Initialize a new research problem",
+    )
+    research_init.add_argument(
+        "--template", "-t",
+        choices=["algorithm", "ml_model", "optimization", "custom"],
+        default="algorithm",
+        help="Problem template to use",
+    )
+    research_init.add_argument(
+        "--name", "-n",
+        default="My Research Problem",
+        help="Problem name",
+    )
+    research_init.add_argument(
+        "--description", "-d",
+        default="Describe your problem here",
+        help="Problem description",
+    )
+    research_init.add_argument(
+        "--output", "-o",
+        default=".",
+        help="Output directory",
+    )
+    research_init.add_argument(
+        "--force", "-f",
+        action="store_true",
+        help="Overwrite existing files",
+    )
+
+    # research status
+    research_subparsers.add_parser(
+        "status",
+        help="Show research progress",
+    )
+
+    # research archive
+    research_archive = research_subparsers.add_parser(
+        "archive",
+        help="Show solution archive",
+    )
+    research_archive.add_argument(
+        "-n", "--limit",
+        type=int,
+        default=10,
+        help="Number of solutions to show",
+    )
+
+    # research export
+    research_export = research_subparsers.add_parser(
+        "export",
+        help="Export best solutions",
+    )
+    research_export.add_argument(
+        "--output", "-o",
+        default="exported_solutions",
+        help="Output directory",
+    )
+    research_export.add_argument(
+        "--count", "-c",
+        type=int,
+        default=1,
+        help="Number of solutions to export",
+    )
+
+    # research reset
+    research_reset = research_subparsers.add_parser(
+        "reset",
+        help="Reset research state",
+    )
+    research_reset.add_argument(
+        "target",
+        choices=["state", "archive", "all"],
+        nargs="?",
+        default="state",
+        help="What to reset",
+    )
+
     return parser
 
 
@@ -633,6 +1249,7 @@ def main(args: list[str] | None = None) -> int:
         "stats": cli.cmd_stats,
         "config": cli.cmd_config,
         "test-evaluator": cli.cmd_test_evaluator,
+        "research": cli.cmd_research,
     }
 
     handler = command_handlers.get(parsed_args.command)

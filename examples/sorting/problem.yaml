@@ -1,0 +1,105 @@
+# Example Problem: Discover Novel Sorting Algorithms
+# This demonstrates Obsidian Research Mode on a simple problem
+
+problem:
+  name: "Novel Sorting Algorithm"
+  description: |
+    Design a sorting algorithm that efficiently sorts a list of integers.
+
+    Requirements:
+    - Must correctly sort any list of integers
+    - Should be efficient (minimize comparisons/swaps)
+    - Novel approaches are valued over standard algorithms
+
+    You are free to invent new approaches. Known algorithms like
+    quicksort, mergesort, heapsort are acceptable but less novel.
+
+  version: "1.0"
+
+  # Where Claude writes the solution
+  solution_file: "solution.py"
+
+  # Required interface
+  solution_interface: |
+    def sort(arr: list[int]) -> list[int]:
+        """
+        Sort a list of integers in ascending order.
+
+        Args:
+            arr: List of integers to sort
+
+        Returns:
+            New sorted list (do not modify input)
+        """
+        pass
+
+evaluator:
+  correctness:
+    type: "pytest"
+    command: "pytest tests/test_sorting.py -x -v"
+    timeout: 60
+    pass_threshold: 1.0
+
+  benchmark:
+    command: "python benchmark.py solution.py"
+    output_parser: "json"
+    timeout: 120
+    direction: "maximize"  # Higher = fewer comparisons = better
+    baseline_score: 0.2    # Insertion sort baseline
+    target_score: 0.85     # Good sorting algorithm target
+
+  novelty:
+    type: "code_diff"
+    k_nearest: 3
+    weight: 0.2
+
+  weights:
+    correctness: 0.2
+    benchmark: 0.6
+    novelty: 0.2
+
+archive:
+  type: "map_elites"
+  niches:
+    - name: "approach"
+      type: "categorical"
+      values: ["comparison", "distribution", "hybrid", "other"]
+    - name: "complexity"
+      type: "continuous"
+      bins: [0, 20, 50, 100]
+  max_solutions_per_niche: 5
+  max_total_solutions: 100
+
+evolution:
+  operations:
+    mutate: 0.4
+    crossover: 0.2
+    explore: 0.3
+    exploit: 0.1
+
+  selection:
+    parent_selection: "tournament"
+    tournament_size: 3
+
+  mutation_strength: "medium"
+
+loop:
+  max_iterations: 100
+  checkpoint_every: 10
+  log_every: 5
+
+  early_stop:
+    threshold: 0.95
+    patience: 20
+
+  human_gate:
+    enabled: false
+
+# Tags for organization
+tags:
+  - algorithms
+  - sorting
+  - example
+
+references:
+  - "https://en.wikipedia.org/wiki/Sorting_algorithm"
