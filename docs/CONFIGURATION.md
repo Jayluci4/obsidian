@@ -266,3 +266,166 @@ This checks:
 - Evaluator weights sum to 1.0
 - Thresholds are in valid ranges
 - Required settings are present
+
+---
+
+# Research Mode Configuration
+
+Research Mode uses `problem.yaml` instead of `obsidian.yaml` for algorithm discovery tasks.
+
+## Complete problem.yaml Example
+
+```yaml
+problem:
+  name: "Novel Sorting Algorithm"
+  description: |
+    Discover an efficient sorting algorithm that sorts integers in ascending order.
+    The algorithm should be correct, efficient, and potentially novel.
+  solution_file: "solution.py"
+
+evaluator:
+  correctness:
+    command: "pytest tests/ -x -q"
+    timeout: 60
+
+  benchmark:
+    command: "python benchmark.py solution.py"
+    timeout: 120
+    direction: "maximize"
+    baseline_score: 0.2
+    target_score: 0.85
+    weight: 0.7
+
+  novelty:
+    enabled: true
+    weight: 0.3
+
+archive:
+  type: "map_elites"
+  niches:
+    - name: "approach"
+      values: ["divide_conquer", "comparison", "distribution", "hybrid", "other"]
+    - name: "complexity"
+      values: ["linear", "linearithmic", "quadratic", "other"]
+
+  max_solutions: 1000
+  diversity_threshold: 0.1
+
+evolution:
+  mutation_rate: 0.4
+  crossover_rate: 0.3
+  explore_rate: 0.2
+  exploit_rate: 0.1
+
+  temperature: 1.0
+  temperature_decay: 0.995
+  min_temperature: 0.1
+
+loop:
+  max_iterations: 1000
+  checkpoint_interval: 50
+  early_stop_iterations: 100
+  min_archive_size: 5
+```
+
+## Problem Specification
+
+| Setting | Type | Required | Description |
+|---------|------|----------|-------------|
+| `problem.name` | string | Yes | Name of the research problem |
+| `problem.description` | string | Yes | Description for Claude |
+| `problem.solution_file` | string | Yes | File containing the solution |
+
+## Evaluator Configuration
+
+### Correctness
+
+| Setting | Type | Default | Description |
+|---------|------|---------|-------------|
+| `command` | string | Required | Command to verify correctness |
+| `timeout` | int | 60 | Timeout in seconds |
+
+### Benchmark
+
+| Setting | Type | Default | Description |
+|---------|------|---------|-------------|
+| `command` | string | Required | Benchmark command (must output JSON) |
+| `timeout` | int | 120 | Timeout in seconds |
+| `direction` | string | "maximize" | "maximize" or "minimize" |
+| `baseline_score` | float | 0.0 | Score for naive solution |
+| `target_score` | float | 1.0 | Target score to achieve |
+| `weight` | float | 0.7 | Weight in final score |
+
+Benchmark output format:
+```json
+{"score": 0.85, "metrics": {"time_ms": 12.5, "memory_mb": 1.2}}
+```
+
+### Novelty
+
+| Setting | Type | Default | Description |
+|---------|------|---------|-------------|
+| `enabled` | bool | true | Enable novelty scoring |
+| `weight` | float | 0.3 | Weight in final score |
+
+## Archive Configuration
+
+| Setting | Type | Default | Description |
+|---------|------|---------|-------------|
+| `type` | string | "map_elites" | Archive type |
+| `niches` | list | Required | Niche definitions |
+| `max_solutions` | int | 1000 | Maximum solutions to store |
+| `diversity_threshold` | float | 0.1 | Minimum diversity between solutions |
+
+### Niche Definition
+
+```yaml
+niches:
+  - name: "approach"
+    values: ["greedy", "dynamic", "other"]
+```
+
+## Evolution Configuration
+
+| Setting | Type | Default | Description |
+|---------|------|---------|-------------|
+| `mutation_rate` | float | 0.4 | Probability of mutation |
+| `crossover_rate` | float | 0.3 | Probability of crossover |
+| `explore_rate` | float | 0.2 | Probability of exploration |
+| `exploit_rate` | float | 0.1 | Probability of exploitation |
+| `temperature` | float | 1.0 | Initial temperature |
+| `temperature_decay` | float | 0.995 | Decay per iteration |
+| `min_temperature` | float | 0.1 | Minimum temperature |
+
+## Loop Configuration
+
+| Setting | Type | Default | Description |
+|---------|------|---------|-------------|
+| `max_iterations` | int | 1000 | Maximum iterations |
+| `checkpoint_interval` | int | 50 | Save checkpoint every N iterations |
+| `early_stop_iterations` | int | 100 | Stop if no improvement for N iterations |
+| `min_archive_size` | int | 5 | Minimum solutions before early stopping |
+
+## Minimal Research Configuration
+
+```yaml
+problem:
+  name: "My Algorithm"
+  description: "Discover an algorithm for..."
+  solution_file: "solution.py"
+
+evaluator:
+  correctness:
+    command: "pytest tests/ -x"
+  benchmark:
+    command: "python benchmark.py solution.py"
+    target_score: 0.9
+
+archive:
+  niches:
+    - name: "approach"
+      values: ["type1", "type2", "other"]
+
+loop:
+  max_iterations: 100
+```
