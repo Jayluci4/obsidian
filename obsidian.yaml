@@ -102,8 +102,10 @@ performance:
   max_workers: 4                # Thread pool size
 
   # Caching
-  cache_enabled: false          # Cache evaluation results (not implemented yet)
-  cache_by_file_hash: false     # Cache based on file content hash
+  cache_enabled: true           # Cache evaluation results
+  cache_by_file_hash: true      # Cache based on file content hash
+  cache_ttl_seconds: 3600       # Cache entry time-to-live (1 hour)
+  cache_max_entries: 100        # Maximum cache entries per evaluator
 
 # ==============================================================================
 # STATE MANAGEMENT

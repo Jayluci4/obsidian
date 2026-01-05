@@ -1,0 +1,105 @@
+problem:
+  name: "Matrix Multiplication Algorithm Discovery"
+  description: |
+    Discover a novel 2x2 matrix multiplication algorithm that uses fewer
+    than 7 scalar multiplications. The current best (Strassen) uses 7.
+
+    Goal: Find an algorithm that either:
+    - Uses fewer multiplications than Strassen (< 7)
+    - Uses same multiplications but fewer additions
+    - Takes a fundamentally different approach
+  solution_file: "solution.py"
+  solution_interface: |
+    def matmul_2x2(A: list[list[float]], B: list[list[float]]) -> list[list[float]]:
+        """
+        Multiply two 2x2 matrices.
+
+        Args:
+            A: 2x2 matrix [[a00, a01], [a10, a11]]
+            B: 2x2 matrix [[b00, b01], [b10, b11]]
+
+        Returns:
+            C: 2x2 result matrix [[c00, c01], [c10, c11]]
+        """
+        pass
+
+evaluator:
+  correctness:
+    command: "python -m pytest tests/ -x -q"
+    timeout: 60
+  benchmark:
+    command: "python benchmark.py solution.py"
+    timeout: 120
+    direction: "minimize"  # Fewer multiplications is better
+    baseline_score: 8.0    # Naive uses 8 multiplications
+    target_score: 6.0      # Goal: beat Strassen's 7
+  weights:
+    correctness: 0.1
+    benchmark: 0.5
+    novelty: 0.4  # High weight to encourage novel solutions
+  novelty:
+    enabled: true
+    known_algorithms:
+      enabled: true
+      confidence_threshold: 0.5
+      # Claude-identified known algorithms for matrix multiplication:
+      definitions:
+        - name: "strassen"
+          description: "Strassen's algorithm using 7 multiplications with specific M1-M7 products"
+          penalty: 0.9
+          keywords: ["strassen", "m1", "m2", "m3", "m4", "m5", "m6", "m7"]
+          patterns:
+            - "m1\\s*="
+            - "m2\\s*="
+            - "m3\\s*="
+            - "\\(.*a00.*\\+.*a11.*\\).*\\*.*\\(.*b00.*\\+.*b11.*\\)"
+            - "7.*multiplication"
+
+        - name: "winograd"
+          description: "Winograd's variant of Strassen with fewer additions"
+          penalty: 0.85
+          keywords: ["winograd", "s1", "s2", "s3", "s4", "t1", "t2", "t3", "t4"]
+          patterns:
+            - "s1\\s*=.*-"
+            - "t1\\s*=.*-"
+            - "winograd"
+
+        - name: "naive"
+          description: "Standard O(n^3) triple-loop multiplication using 8 multiplications"
+          penalty: 0.7
+          keywords: ["naive", "standard", "triple loop", "8 multiplications"]
+          patterns:
+            - "a00\\s*\\*\\s*b00\\s*\\+\\s*a01\\s*\\*\\s*b10"
+            - "a00\\s*\\*\\s*b01\\s*\\+\\s*a01\\s*\\*\\s*b11"
+            - "for.*for.*for"
+
+        - name: "laderman"
+          description: "Laderman's algorithm for 3x3 matrices using 23 multiplications"
+          penalty: 0.8
+          keywords: ["laderman", "23 multiplications", "3x3"]
+          patterns:
+            - "laderman"
+
+        - name: "coppersmith_winograd"
+          description: "Coppersmith-Winograd algorithm with O(n^2.376) complexity"
+          penalty: 0.85
+          keywords: ["coppersmith", "winograd", "2.376", "2.37"]
+          patterns:
+            - "coppersmith"
+            - "2\\.37"
+
+archive:
+  type: "map_elites"
+  niches:
+    - name: "approach"
+      type: "categorical"
+      values: ["algebraic", "recursive", "hybrid", "numeric", "other"]
+    - name: "mult_count"
+      type: "categorical"
+      values: ["lt_7", "eq_7", "gt_7"]
+  max_solutions: 100
+
+loop:
+  max_iterations: 100
+  checkpoint_interval: 10
+  early_stop_iterations: 20

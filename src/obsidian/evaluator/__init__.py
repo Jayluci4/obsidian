@@ -15,6 +15,14 @@ from .response_analyzer import (
     detect_completion,
     is_test_only_output,
 )
+from .cache import (
+    EvaluationCache,
+    CachedEvaluatorWrapper,
+    CacheEntry,
+    CacheStats,
+    compute_file_hash,
+    compute_directory_hash,
+)
 
 __all__ = [
     # Base
@@ -49,4 +57,11 @@ __all__ = [
     "analyze_response",
     "detect_completion",
     "is_test_only_output",
+    # Cache
+    "EvaluationCache",
+    "CachedEvaluatorWrapper",
+    "CacheEntry",
+    "CacheStats",
+    "compute_file_hash",
+    "compute_directory_hash",
 ]

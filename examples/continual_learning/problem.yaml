@@ -1,0 +1,192 @@
+problem:
+  name: "Continual Learning Optimizer Discovery"
+  description: |
+    Discover a novel optimizer/learning algorithm that enables continual learning
+    WITHOUT catastrophic forgetting.
+
+    The Problem:
+    - Standard optimizers (SGD, Adam) forget previous tasks when learning new ones
+    - Current solutions (EWC, PackNet) add memory overhead or architectural constraints
+    - We need an optimizer that can learn sequentially with constant memory
+
+    Goal: Find an algorithm that:
+    1. Learns new tasks quickly (forward transfer)
+    2. Retains performance on old tasks (backward transfer / no forgetting)
+    3. Uses constant memory (doesn't grow with number of tasks)
+    4. Works with standard architectures (no special layers required)
+
+    This is a PARADIGM problem, not a hyperparameter tuning problem.
+    Think from first principles about how learning and memory work.
+
+    Inspiration:
+    - Nested Learning (Google 2024): Multi-level optimization, continuum memory
+    - Biological neuroplasticity: Synaptic consolidation, sleep replay
+    - Information theory: Compression, selective retention
+
+  solution_file: "solution.py"
+  solution_interface: |
+    class ContinualOptimizer:
+        """
+        A continual learning optimizer that prevents catastrophic forgetting.
+
+        Must implement:
+        - __init__(params, lr, **kwargs): Initialize with model parameters
+        - step(loss): Update parameters given current loss
+        - task_switch(task_id): Called when switching to a new task
+        - state_dict() / load_state_dict(): For checkpointing
+
+        The optimizer should:
+        - Update model parameters to minimize loss on current task
+        - Preserve performance on previous tasks
+        - Use O(1) or O(params) memory, NOT O(params * tasks)
+        """
+
+        def __init__(self, params, lr=0.01, **kwargs):
+            pass
+
+        def zero_grad(self):
+            """Clear gradients."""
+            pass
+
+        def step(self, loss=None):
+            """Perform optimization step."""
+            pass
+
+        def task_switch(self, task_id: int):
+            """Called when switching to a new task. Prepare for new learning."""
+            pass
+
+        def state_dict(self) -> dict:
+            """Return optimizer state for checkpointing."""
+            pass
+
+        def load_state_dict(self, state: dict):
+            """Load optimizer state."""
+            pass
+
+evaluator:
+  correctness:
+    command: "python -c \"from solution import ContinualOptimizer; print('OK')\""
+    timeout: 10
+  benchmark:
+    command: "python benchmark_mnist.py solution.py"
+    timeout: 300
+    direction: "maximize"
+    baseline_score: 0.38   # Current importance-LR scaling score
+    target_score: 0.80     # Goal: 80% on real MNIST
+  weights:
+    correctness: 0.1
+    benchmark: 0.5
+    novelty: 0.4  # High weight - we want genuinely new approaches
+  novelty:
+    enabled: true
+    known_algorithms:
+      enabled: true
+      confidence_threshold: 0.5
+      # Known continual learning approaches to penalize:
+      definitions:
+        - name: "ewc"
+          description: "Elastic Weight Consolidation - Fisher information penalty"
+          penalty: 0.85
+          keywords: ["ewc", "elastic", "fisher", "consolidation", "importance", "fisher_information"]
+          patterns:
+            - "fisher"
+            - "importance.*weight"
+            - "penalty.*old"
+            - "lambda.*\\(.*param.*-.*old_param.*\\)"
+
+        - name: "si"
+          description: "Synaptic Intelligence - online importance estimation"
+          penalty: 0.8
+          keywords: ["synaptic", "intelligence", "omega", "importance", "path_integral"]
+          patterns:
+            - "omega"
+            - "path.*integral"
+            - "surrogate.*loss"
+
+        - name: "packnet"
+          description: "PackNet - parameter isolation by pruning"
+          penalty: 0.8
+          keywords: ["packnet", "prune", "mask", "freeze", "isolated"]
+          patterns:
+            - "mask.*task"
+            - "prune"
+            - "freeze.*param"
+
+        - name: "progressive"
+          description: "Progressive Neural Networks - lateral connections"
+          penalty: 0.85
+          keywords: ["progressive", "lateral", "column", "adapter"]
+          patterns:
+            - "lateral"
+            - "new.*column"
+            - "adapter"
+
+        - name: "replay"
+          description: "Experience Replay - store and replay old samples"
+          penalty: 0.75
+          keywords: ["replay", "buffer", "memory", "rehearsal", "pseudorehearsal"]
+          patterns:
+            - "replay.*buffer"
+            - "memory.*bank"
+            - "store.*sample"
+            - "rehearsal"
+
+        - name: "gem"
+          description: "Gradient Episodic Memory - constrained optimization"
+          penalty: 0.8
+          keywords: ["gem", "agem", "episodic", "constraint", "gradient_projection"]
+          patterns:
+            - "project.*gradient"
+            - "episodic.*memory"
+            - "constraint.*old"
+
+        - name: "lwf"
+          description: "Learning without Forgetting - knowledge distillation"
+          penalty: 0.75
+          keywords: ["lwf", "distillation", "teacher", "soft_target", "knowledge"]
+          patterns:
+            - "distill"
+            - "teacher.*student"
+            - "soft.*label"
+            - "kl.*divergence"
+
+        - name: "mas"
+          description: "Memory Aware Synapses - unsupervised importance"
+          penalty: 0.8
+          keywords: ["mas", "memory_aware", "sensitivity", "unsupervised_importance"]
+          patterns:
+            - "sensitivity"
+            - "output.*gradient"
+
+        - name: "fine_tuning"
+          description: "Naive fine-tuning (baseline, expects forgetting)"
+          penalty: 0.5
+          keywords: ["fine_tune", "finetune", "transfer"]
+          patterns:
+            - "fine.*tun"
+
+        - name: "standard_adam"
+          description: "Using standard Adam/SGD without modification"
+          penalty: 0.6
+          keywords: ["adam", "sgd", "momentum", "rmsprop"]
+          patterns:
+            - "torch\\.optim\\.Adam"
+            - "torch\\.optim\\.SGD"
+            - "optim\\.Adam"
+
+archive:
+  type: "map_elites"
+  niches:
+    - name: "approach"
+      type: "categorical"
+      values: ["regularization", "memory", "architecture", "meta", "hybrid", "other"]
+    - name: "memory_class"
+      type: "categorical"
+      values: ["constant", "linear_params", "linear_tasks", "quadratic"]
+  max_solutions: 100
+
+loop:
+  max_iterations: 100
+  checkpoint_interval: 10
+  early_stop_iterations: 25

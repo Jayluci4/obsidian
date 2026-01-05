@@ -2,6 +2,7 @@
 
 import concurrent.futures
 from dataclasses import dataclass, field
+from pathlib import Path
 from typing import Callable
 
 from .base import EvalResult, compute_composite_reward
@@ -9,6 +10,7 @@ from .pytest_eval import PytestEvaluator, format_pytest_failures
 from .coverage_eval import CoverageEvaluator, format_coverage_details
 from .ruff_eval import RuffEvaluator, format_ruff_issues
 from .pyright_eval import PyrightEvaluator, format_pyright_diagnostics
+from .cache import EvaluationCache, CachedEvaluatorWrapper
 
 
 @dataclass
@@ -33,6 +35,7 @@ class CompositeEvaluator:
     Orchestrates multiple evaluators and computes composite reward.
 
     Runs evaluators in parallel for efficiency.
+    Supports optional caching to avoid redundant evaluations.
     """
 
     def __init__(
@@ -43,10 +46,14 @@ class CompositeEvaluator:
         pyright_config: dict | None = None,
         weights: dict[str, float] | None = None,
         max_workers: int = 4,
+        cache: EvaluationCache | None = None,
+        source_dir: str = "src",
     ):
         self.max_workers = max_workers
         self.evaluators = []
         self.weights = weights or {}
+        self.cache = cache
+        self.source_dir = source_dir
 
         # Initialize enabled evaluators
         pytest_cfg = pytest_config or {}
@@ -97,7 +104,7 @@ class CompositeEvaluator:
                 self.weights["pyright"] = pyright_cfg["weight"]
 
     @classmethod
-    def from_config(cls, config) -> "CompositeEvaluator":
+    def from_config(cls, config, state_dir: Path | None = None) -> "CompositeEvaluator":
         """Create from ObsidianConfig object."""
         weights = {
             "pytest": config.pytest.weight,
@@ -105,6 +112,19 @@ class CompositeEvaluator:
             "ruff": config.ruff.weight,
             "pyright": config.pyright.weight,
         }
+
+        # Create cache if enabled in config
+        cache = None
+        cache_enabled = getattr(config.evaluator, "cache_enabled", False) if hasattr(config, "evaluator") else False
+        if cache_enabled and state_dir:
+            cache_dir = state_dir / "eval_cache"
+            ttl = getattr(config.evaluator, "cache_ttl_seconds", 3600) if hasattr(config, "evaluator") else 3600
+            max_entries = getattr(config.evaluator, "cache_max_entries", 100) if hasattr(config, "evaluator") else 100
+            cache = EvaluationCache(
+                cache_dir=cache_dir,
+                ttl_seconds=ttl,
+                max_entries=max_entries,
+            )
 
         return cls(
             pytest_config={
@@ -132,6 +152,8 @@ class CompositeEvaluator:
                 "weight": config.pyright.weight,
             },
             weights=weights,
+            cache=cache,
+            source_dir=config.coverage.source,
         )
 
     def evaluate(self, project_path: str) -> CompositeResult:
@@ -139,6 +161,7 @@ class CompositeEvaluator:
         Run all evaluators and compute composite reward.
 
         Runs evaluators in parallel using ThreadPoolExecutor.
+        Uses cache to avoid redundant evaluations if configured.
         """
         import time
 
@@ -155,11 +178,20 @@ class CompositeEvaluator:
                 weights={},
             )
 
+        # Wrap evaluators with cache if available
+        if self.cache:
+            evaluators = [
+                CachedEvaluatorWrapper(ev, self.cache, self.source_dir)
+                for ev in self.evaluators
+            ]
+        else:
+            evaluators = self.evaluators
+
         # Run evaluators in parallel
         with concurrent.futures.ThreadPoolExecutor(max_workers=self.max_workers) as executor:
             future_to_evaluator = {
                 executor.submit(evaluator.collect, project_path): evaluator
-                for evaluator in self.evaluators
+                for evaluator in evaluators
             }
 
             for future in concurrent.futures.as_completed(future_to_evaluator):
@@ -195,6 +227,18 @@ class CompositeEvaluator:
             execution_time_ms=execution_time,
             weights=self.weights,
         )
+
+    def get_cache_stats(self) -> dict | None:
+        """Get cache statistics if caching is enabled."""
+        if self.cache:
+            return self.cache.get_stats()
+        return None
+
+    def invalidate_cache(self, evaluator_name: str | None = None) -> int:
+        """Invalidate cache entries."""
+        if self.cache:
+            return self.cache.invalidate(evaluator_name)
+        return 0
 
 
 def format_composite_feedback(
