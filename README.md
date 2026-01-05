@@ -11,6 +11,15 @@ Obsidian enables Claude Code to obsess over problems like humans do - iterating,
 | **Standard Mode** | Fix tests, improve coverage | `obsidian.yaml` |
 | **Research Mode** | Discover novel algorithms | `problem.yaml` |
 
+### Key Features
+
+- **Autonomous Loop**: Blocks Claude from stopping until goals achieved (Ralph Wiggum pattern)
+- **ICRL Context**: Injects past attempts with rewards to guide learning
+- **MAP-Elites Archive**: Quality-diversity storage for algorithm discovery
+- **AlphaEvolve Extensions**: Adaptive bandits, multi-parent crossover, AST novelty
+- **Known Algorithm Detection**: Penalizes rediscovery of existing algorithms
+- **Circuit Breaker**: Prevents infinite loops when stuck
+
 ## Installation
 
 ### Step 1: Install Python Package
@@ -206,6 +215,33 @@ loop:
   max_iterations: 1000
 ```
 
+### AlphaEvolve Extensions (Research Mode)
+
+Enable advanced evolutionary features for improved algorithm discovery:
+
+```yaml
+evolution:
+  # Adaptive operation selection (learns what works)
+  adaptive:
+    enabled: true
+    algorithm: "ucb1"  # ucb1, thompson, epsilon_greedy
+
+  # Fitness-diversity parent selection
+  parent_selection:
+    method: "fitness_diversity"
+    diversity_weight: 0.3
+
+  # 3-parent crossover
+  crossover_parents: 3
+
+  # Strategic prompt learning
+  prompt_sampling:
+    enabled: true
+    epsilon: 0.15
+```
+
+See [AlphaEvolve Documentation](docs/ALPHAEVOLVE.md) for complete details.
+
 ## CLI Commands
 
 ```bash
@@ -235,14 +271,80 @@ obsidian research init --template custom         # Custom problem
 
 ## Examples
 
-See `examples/` directory:
-- `examples/sorting/` - Algorithm discovery example
+See `examples/` directory for complete working examples:
+
+### Matrix Multiplication (`examples/matmul_test/`)
+
+Discover novel 2x2 matrix multiplication algorithms (beat Strassen's 7 multiplications):
+
+```bash
+cd examples/matmul_test
+# problem.yaml is pre-configured with AlphaEvolve features enabled
+```
+
+**Features demonstrated:**
+- Known algorithm detection (Strassen, Winograd, naive)
+- Benchmark scoring (minimize multiplications)
+- MAP-Elites archive with approach/complexity niches
+- UCB1 adaptive operation selection
+
+**Run tests:**
+```bash
+pytest examples/matmul_test/tests/
+```
+
+### Continual Learning (`examples/continual_learning/`)
+
+Example of continual learning problem setup.
+
+### Running an Example
+
+1. Navigate to example directory
+2. Start Claude Code: `claude`
+3. Give task: "Discover a novel algorithm that beats the baseline"
+4. Watch Obsidian iterate automatically
 
 ## Documentation
 
-- [Configuration Reference](docs/CONFIGURATION.md)
-- [Architecture Overview](docs/ARCHITECTURE.md)
-- [Troubleshooting](docs/TROUBLESHOOTING.md)
+- [Configuration Reference](docs/CONFIGURATION.md) - All configuration options
+- [AlphaEvolve Extensions](docs/ALPHAEVOLVE.md) - Adaptive evolution features
+- [Architecture Overview](docs/ARCHITECTURE.md) - System design
+- [Troubleshooting](docs/TROUBLESHOOTING.md) - Common issues
+
+## Testing
+
+Run the test suite:
+
+```bash
+# All tests (352 tests)
+pytest tests/
+
+# Specific test files
+pytest tests/test_alphaevolve.py    # AlphaEvolve features (35 tests)
+pytest tests/test_research.py       # Research mode (39 tests)
+pytest tests/test_evaluator.py      # Evaluator system
+pytest tests/test_memory.py         # Memory system
+pytest tests/test_strategy.py       # Strategy controller
+pytest tests/test_icrl.py           # ICRL context building
+
+# With coverage
+pytest tests/ --cov=src/obsidian --cov-report=term-missing
+
+# Run example tests
+pytest examples/matmul_test/tests/
+```
+
+### Test Categories
+
+| Test File | Tests | Coverage |
+|-----------|-------|----------|
+| `test_alphaevolve.py` | 35 | Bandits, AST novelty, lineage, prompts |
+| `test_research.py` | 39 | Problem spec, archive, evolution, evaluator |
+| `test_icrl.py` | 46 | Context building, episode selection |
+| `test_memory.py` | 40 | SQLite storage, episodes, sessions |
+| `test_strategy.py` | 39 | Circuit breaker, mode switching |
+| `test_evaluator.py` | 5 | Composite evaluator |
+| `test_cli.py` | 32 | CLI commands |
 
 ## Requirements
 
