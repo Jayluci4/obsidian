@@ -1,0 +1,142 @@
+# Online Bin Packing Heuristic Discovery
+# Inspired by FunSearch (DeepMind, Nature 2023)
+#
+# Goal: Discover a priority heuristic that beats First Fit and Best Fit
+#
+# Problem:
+#   - Items arrive online (one at a time)
+#   - Each item must be placed immediately in a bin
+#   - All bins have the same capacity (default: 100)
+#   - Minimize the number of bins used
+#
+# Function to evolve:
+#   priority(item_size, bin_remaining_capacities) -> priority_scores
+#   The bin with highest score gets the item (if it fits)
+#
+# FunSearch discovered heuristics that:
+#   - Don't always use "best fit"
+#   - Consider whether the fit is "tight" enough
+#   - Use complex conditional logic based on remaining capacity
+
+problem:
+  name: "Online Bin Packing Heuristic"
+  description: |
+    Discover a priority heuristic for online 1D bin packing that outperforms
+    classical algorithms (First Fit, Best Fit).
+
+    TASK:
+    Implement a priority function that decides which bin to place an item in.
+    The function receives:
+    - item: size of the current item (0 < item <= bin_capacity)
+    - bins: list of remaining capacities for each open bin
+
+    Return a list of priority scores (one per bin). The item goes in the
+    highest-scoring bin that can fit it. Return -inf for bins that can't fit.
+
+    BASELINES TO BEAT:
+    - First Fit: Place in first bin that fits (score ~0.85)
+    - Best Fit: Place in tightest-fitting bin (score ~0.90)
+
+    TARGET: Score > 0.95 (beating Best Fit significantly)
+
+    KEY INSIGHTS FROM FUNSEARCH:
+    - Sometimes leaving gaps is better than tight packing
+    - Consider the "tightness" of the fit
+    - Different strategies for different item sizes
+    - Empty bins should sometimes be preferred over poor fits
+
+  solution_file: "solution.py"
+  solution_interface: |
+    def priority(item: int, bins: list[int]) -> list[float]:
+        """
+        Compute priority score for placing item in each bin.
+
+        Args:
+            item: Size of item to place (1 to bin_capacity)
+            bins: List of remaining capacities of open bins
+
+        Returns:
+            List of priority scores (one per bin)
+            Higher score = more preferred
+            Return -inf for bins where item doesn't fit
+        """
+        pass
+
+evaluator:
+  correctness:
+    command: "pytest examples/bin_packing/tests/ -x -q --tb=short"
+    timeout: 60
+
+  benchmark:
+    command: "python examples/bin_packing/benchmark.py"
+    timeout: 120
+    direction: "maximize"
+    baseline_score: 0.85  # First Fit performance
+    target_score: 0.96
+    weight: 0.8
+
+  novelty:
+    enabled: true
+    weight: 0.2
+    known_algorithms:
+      enabled: true
+      penalty: 0.3
+      definitions:
+        - name: "first_fit"
+          description: "First Fit: choose first bin that fits"
+          penalty: 0.4
+          detection_patterns:
+            - "for.*in.*range.*bins"
+            - "enumerate.*bins"
+        - name: "best_fit"
+          description: "Best Fit: choose bin with smallest remaining space"
+          penalty: 0.3
+          detection_patterns:
+            - "min.*remaining"
+            - "argmin"
+            - "bins\\[i\\] - item"
+        - name: "worst_fit"
+          description: "Worst Fit: choose bin with largest remaining space"
+          penalty: 0.5
+          detection_patterns:
+            - "max.*remaining"
+            - "argmax"
+
+archive:
+  type: "map_elites"
+  niches:
+    - name: "strategy"
+      type: "categorical"
+      values: ["tight_fit", "gap_aware", "size_adaptive", "hybrid", "other"]
+    - name: "complexity"
+      type: "categorical"
+      values: ["simple", "moderate", "complex"]
+  max_solutions_per_niche: 3
+  max_total_solutions: 200
+
+evolution:
+  adaptive:
+    enabled: true
+    algorithm: "ucb1"
+    exploration_factor: 1.5
+
+  parent_selection:
+    method: "fitness_diversity"
+    diversity_weight: 0.4
+
+  crossover_parents: 3
+
+  prompt_sampling:
+    enabled: true
+    epsilon: 0.2
+
+  mutation_rate: 0.35
+  crossover_rate: 0.25
+  explore_rate: 0.30
+  exploit_rate: 0.10
+
+loop:
+  max_iterations: 200
+  checkpoint_interval: 20
+  early_stop_iterations: 50
+  min_archive_size: 5
