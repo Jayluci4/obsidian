@@ -397,6 +397,42 @@ niches:
 | `temperature_decay` | float | 0.995 | Decay per iteration |
 | `min_temperature` | float | 0.1 | Minimum temperature |
 
+### AlphaEvolve-Style Extensions
+
+Enable advanced evolutionary features for improved algorithm discovery. See [ALPHAEVOLVE.md](ALPHAEVOLVE.md) for complete documentation.
+
+```yaml
+evolution:
+  # Adaptive operation selection (UCB1 bandit)
+  adaptive:
+    enabled: true
+    algorithm: "ucb1"        # ucb1, thompson, epsilon_greedy
+    exploration_factor: 1.0  # UCB1 exploration constant
+
+  # Fitness-diversity parent selection
+  parent_selection:
+    method: "fitness_diversity"  # tournament, fitness_diversity
+    diversity_weight: 0.3
+
+  # Multi-parent crossover (3 parents)
+  crossover_parents: 3
+
+  # Strategic prompt sampling
+  prompt_sampling:
+    enabled: true
+    epsilon: 0.15
+```
+
+| Setting | Type | Default | Description |
+|---------|------|---------|-------------|
+| `adaptive.enabled` | bool | false | Enable adaptive operation selection |
+| `adaptive.algorithm` | string | "ucb1" | Bandit algorithm |
+| `parent_selection.method` | string | "tournament" | Parent selection method |
+| `parent_selection.diversity_weight` | float | 0.3 | Balance fitness vs diversity |
+| `crossover_parents` | int | 2 | Number of parents for crossover |
+| `prompt_sampling.enabled` | bool | false | Enable prompt learning |
+| `prompt_sampling.epsilon` | float | 0.1 | Prompt exploration rate |
+
 ## Loop Configuration
 
 | Setting | Type | Default | Description |
