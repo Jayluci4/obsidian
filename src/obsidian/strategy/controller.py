@@ -6,6 +6,7 @@ from typing import Any
 
 from ..memory.store import MemoryStore
 from ..memory.episodic import EpisodicMemory
+from ..memory.procedural import ProceduralMemory
 from .modes import StrategyMode, ModeRecommendation, get_mode_prompt
 from .stuck_detector import StuckDetector, StuckAnalysis
 
@@ -40,17 +41,20 @@ class StrategyController:
         improve_threshold: float = 0.05,
         decline_threshold: float = -0.05,
         max_consecutive_mode: int = 5,
+        use_procedural_memory: bool = True,
     ):
         self.state_dir = state_dir
         self.session_id = session_id
         self.improve_threshold = improve_threshold
         self.decline_threshold = decline_threshold
         self.max_consecutive_mode = max_consecutive_mode
+        self.use_procedural_memory = use_procedural_memory
 
         # Initialize components
         db_path = state_dir / "memory.db"
         self._store = MemoryStore(db_path)
         self._memory = EpisodicMemory(self._store)
+        self._procedural = ProceduralMemory(self._store)
         self._stuck_detector = StuckDetector()
 
         # Track state
@@ -81,10 +85,11 @@ class StrategyController:
         Recommend strategy mode based on current state.
 
         Decision logic:
-        1. If stuck → EXPLORE
+        1. If stuck → EXPLORE (unless EXPLORE has poor track record)
         2. If improving significantly → EXPLOIT
         3. If declining → EXPLORE
-        4. Otherwise → AUTONOMOUS
+        4. Check procedural memory for strategy effectiveness
+        5. Otherwise → AUTONOMOUS
         """
         history = self.get_reward_history()
 
@@ -102,8 +107,17 @@ class StrategyController:
         # Check stuck patterns
         stuck_analysis = self.analyze_stuck()
         if stuck_analysis.is_stuck:
+            # Recommend explore, but check if it has been ineffective
+            mode = StrategyMode.EXPLORE
+
+            if self.use_procedural_memory:
+                explore_record = self._procedural.get_strategy("explore")
+                if explore_record and explore_record.usage_count >= 3 and explore_record.avg_delta < -0.01:
+                    # Explore has been making things worse, try exploit instead
+                    mode = StrategyMode.EXPLOIT
+
             recommendation = ModeRecommendation(
-                mode=StrategyMode.EXPLORE,
+                mode=mode,
                 confidence=stuck_analysis.confidence,
                 reason=f"Stuck pattern detected: {stuck_analysis.pattern.value if stuck_analysis.pattern else 'unknown'}",
                 evidence={
@@ -137,11 +151,25 @@ class StrategyController:
                 evidence={"trend": trend, "threshold": self.decline_threshold},
             )
         else:
-            # Neutral - let model decide
+            # Neutral - check procedural memory for best strategy
+            mode = StrategyMode.AUTONOMOUS
+            reason = "Trend is neutral - autonomous decision appropriate"
+
+            if self.use_procedural_memory:
+                recommended = self._procedural.get_recommended_strategy(min_uses=2)
+                if recommended and recommended.avg_delta > 0.02:
+                    # Use the historically best strategy
+                    if recommended.name == "exploit":
+                        mode = StrategyMode.EXPLOIT
+                        reason = f"Procedural memory suggests EXPLOIT (avg delta: {recommended.avg_delta:+.3f})"
+                    elif recommended.name == "explore":
+                        mode = StrategyMode.EXPLORE
+                        reason = f"Procedural memory suggests EXPLORE (avg delta: {recommended.avg_delta:+.3f})"
+
             recommendation = ModeRecommendation(
-                mode=StrategyMode.AUTONOMOUS,
+                mode=mode,
                 confidence=0.7,
-                reason="Trend is neutral - autonomous decision appropriate",
+                reason=reason,
                 evidence={"trend": trend},
             )
 
@@ -214,52 +242,41 @@ class StrategyController:
         mode: StrategyMode,
         reward_before: float,
         reward_after: float,
+        description: str = "",
     ) -> None:
         """
         Record the outcome of a strategy for learning.
 
         Updates procedural memory with strategy effectiveness.
         """
-        delta = reward_after - reward_before
-        success = delta > 0.02
-
-        # Store in procedural memory
-        self._store.execute(
-            """
-            INSERT INTO procedural_strategies (name, description, total_reward_delta, usage_count, success_count)
-            VALUES (?, ?, ?, 1, ?)
-            ON CONFLICT(name) DO UPDATE SET
-                total_reward_delta = total_reward_delta + ?,
-                usage_count = usage_count + 1,
-                success_count = success_count + ?,
-                updated_at = CURRENT_TIMESTAMP
-            """,
-            (mode.value, mode.name, delta, 1 if success else 0, delta, 1 if success else 0),
+        self._procedural.record_outcome(
+            strategy_name=mode.value,
+            reward_before=reward_before,
+            reward_after=reward_after,
+            description=description or mode.name,
         )
 
     def get_strategy_stats(self) -> dict[str, Any]:
-        """Get strategy effectiveness statistics."""
-        rows = self._store.execute(
-            """
-            SELECT name, total_reward_delta, usage_count, success_count
-            FROM procedural_strategies
-            ORDER BY total_reward_delta DESC
-            """
-        )
+        """
+        Get strategy effectiveness statistics.
 
+        Returns per-strategy stats keyed by strategy name.
+        """
+        strategies = self._procedural.get_all_strategies()
         stats = {}
-        for row in rows:
-            name = row["name"]
-            usage = row["usage_count"]
-            stats[name] = {
-                "total_delta": row["total_reward_delta"],
-                "usage_count": usage,
-                "success_count": row["success_count"],
-                "success_rate": row["success_count"] / usage if usage > 0 else 0,
-                "avg_delta": row["total_reward_delta"] / usage if usage > 0 else 0,
+        for s in strategies:
+            stats[s.name] = {
+                "total_delta": s.total_reward_delta,
+                "usage_count": s.usage_count,
+                "success_count": s.success_count,
+                "success_rate": s.success_rate,
+                "avg_delta": s.avg_delta,
             }
-
         return stats
+
+    def get_aggregate_stats(self) -> dict[str, Any]:
+        """Get aggregate statistics across all strategies."""
+        return self._procedural.get_stats()
 
     def close(self) -> None:
         """Close database connection."""

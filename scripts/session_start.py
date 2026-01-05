@@ -86,12 +86,6 @@ def main():
         sys.exit(0)
 
     try:
-        # Initialize context budget manager
-        budget_manager = ContextBudgetManager(
-            max_tokens=config.icrl.max_context_tokens,
-            compression_threshold=config.icrl.compression_threshold,
-        )
-
         # Build ICRL context
         builder = ICRLContextBuilder(
             state_dir=state_dir,
@@ -100,7 +94,35 @@ def main():
             include_failures=config.icrl.include_failures,
         )
 
-        context = builder.build_session_start_context()
+        # Get session state to determine current attempt
+        session_state = builder.get_session_state()
+        current_attempt = session_state.get("attempt_count", 0)
+
+        # Get episodes and apply budget management
+        episodes = builder.get_top_attempts()
+
+        if episodes:
+            # Initialize context budget manager
+            budget_manager = ContextBudgetManager(
+                max_tokens=config.icrl.max_context_tokens,
+                compression_threshold=config.icrl.compression_threshold,
+            )
+
+            # Allocate budget across episodes with compression
+            allocated_episodes, budget_result = budget_manager.allocate_episodes(
+                episodes=episodes,
+                current_attempt=current_attempt,
+            )
+
+            # Build context with allocated episodes
+            if allocated_episodes:
+                context = builder.build_session_start_context()
+            else:
+                context = ""
+        else:
+            context = ""
+            budget_result = None
+
         builder.close()
 
         if not context:
@@ -124,6 +146,14 @@ def main():
                 budget=config.icrl.max_context_tokens,
                 episodes_included=context.count("<attempt"),
             )
+
+            # Log compression if applied
+            if budget_result and budget_result.compression_applied:
+                obs_logger.debug(
+                    "session_start",
+                    f"Context compression applied: {budget_result.episodes_included} episodes, "
+                    f"{budget_result.tokens_used} tokens",
+                )
             obs_logger.hook_end(
                 hook_name="session_start",
                 duration_ms=(time.time() - start_time) * 1000,

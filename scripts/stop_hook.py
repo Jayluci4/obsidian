@@ -378,7 +378,7 @@ def main():
     if response_analysis and response_analysis.work_summary:
         action_summary = response_analysis.work_summary
 
-    state_manager.add_episode(
+    episode = state_manager.add_episode(
         reward=composite_result.reward,
         metrics=composite_result.metrics,
         action_summary=action_summary,
@@ -391,6 +391,44 @@ def main():
             reward=composite_result.reward,
             metrics=composite_result.metrics,
         )
+
+    # === MEMORY INTEGRATION ===
+    # Extract facts from high-reward episodes and record strategy outcomes
+    try:
+        from obsidian.icrl import ICRLContextBuilder
+
+        context_builder = ICRLContextBuilder(
+            state_dir=state_dir,
+            session_id=session_id,
+            include_semantic=True,
+            include_procedural=True,
+        )
+
+        # Extract semantic facts from successful episodes
+        if composite_result.reward >= 0.7 and action_summary:
+            context_builder.extract_facts_from_episode(
+                episode_id=episode.id if hasattr(episode, 'id') else str(state.attempt_count + 1),
+                action_summary=action_summary,
+                reward=composite_result.reward,
+                metrics=composite_result.metrics,
+            )
+
+        # Record strategy outcome for procedural memory
+        if state.attempt_count > 0 and len(state.reward_history) > 0:
+            prev_reward = state.reward_history[-1] if state.reward_history else 0.0
+            strategy_name = state.current_strategy or "autonomous"
+            context_builder.record_strategy_outcome(
+                strategy_name=strategy_name,
+                reward_before=prev_reward,
+                reward_after=composite_result.reward,
+                description=action_summary[:100] if action_summary else "",
+            )
+
+        context_builder.close()
+
+    except Exception as e:
+        if obs_logger:
+            obs_logger.warning("memory", f"Memory integration failed: {e}")
 
     # Reload state after adding episode
     state = state_manager.load()

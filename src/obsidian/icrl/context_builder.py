@@ -5,6 +5,8 @@ from typing import Any
 
 from ..memory.store import MemoryStore
 from ..memory.episodic import EpisodicMemory, Episode
+from ..memory.semantic import SemanticMemory
+from ..memory.procedural import ProceduralMemory
 from .prompt_templates import (
     format_experience_buffer,
     format_meta_instruction,
@@ -17,7 +19,9 @@ class ICRLContextBuilder:
     Builds ICRL context for prompt injection.
 
     Retrieves top-K episodes from memory and formats them
-    for injection into Claude's context.
+    for injection into Claude's context. Also includes:
+    - Semantic memory (learned facts and patterns)
+    - Procedural memory (strategy effectiveness)
     """
 
     def __init__(
@@ -26,16 +30,22 @@ class ICRLContextBuilder:
         session_id: str,
         top_k: int = 5,
         include_failures: bool = True,
+        include_semantic: bool = True,
+        include_procedural: bool = True,
     ):
         self.state_dir = state_dir
         self.session_id = session_id
         self.top_k = top_k
         self.include_failures = include_failures
+        self.include_semantic = include_semantic
+        self.include_procedural = include_procedural
 
-        # Initialize memory
+        # Initialize memory systems
         db_path = state_dir / "memory.db"
         self._store = MemoryStore(db_path)
         self._memory = EpisodicMemory(self._store)
+        self._semantic = SemanticMemory(self._store)
+        self._procedural = ProceduralMemory(self._store)
 
     def _episode_to_dict(self, episode: Episode) -> dict[str, Any]:
         """Convert Episode to dictionary for template formatting."""
@@ -174,7 +184,10 @@ class ICRLContextBuilder:
         Build context for SessionStart hook injection.
 
         This is injected at the start of a session to provide
-        historical context.
+        historical context including:
+        - Episodic memory (past attempts)
+        - Semantic memory (learned facts)
+        - Procedural memory (strategy effectiveness)
         """
         state = self.get_session_state()
 
@@ -193,7 +206,84 @@ class ICRLContextBuilder:
             f"================================\n\n"
         )
 
-        return header + context
+        # Add semantic memory (learned facts)
+        semantic_context = ""
+        if self.include_semantic:
+            semantic_context = self._semantic.format_for_context(max_facts=5)
+            if semantic_context:
+                semantic_context = "\n" + semantic_context + "\n"
+
+        # Add procedural memory (strategy knowledge)
+        procedural_context = ""
+        if self.include_procedural:
+            procedural_context = self._procedural.format_for_context(max_strategies=3)
+            if procedural_context:
+                procedural_context = "\n" + procedural_context + "\n"
+
+        return header + context + semantic_context + procedural_context
+
+    def extract_facts_from_episode(
+        self,
+        episode_id: str,
+        action_summary: str,
+        reward: float,
+        metrics: dict[str, float],
+    ) -> None:
+        """
+        Extract and store semantic facts from a high-reward episode.
+
+        Called after successful episodes to build long-term memory.
+        """
+        self._semantic.extract_facts_from_episode(
+            episode_id=episode_id,
+            action_summary=action_summary,
+            reward=reward,
+            metrics=metrics,
+        )
+
+    def record_strategy_outcome(
+        self,
+        strategy_name: str,
+        reward_before: float,
+        reward_after: float,
+        description: str = "",
+    ) -> None:
+        """
+        Record the outcome of a strategy for procedural memory.
+
+        Called after each attempt to track strategy effectiveness.
+        """
+        self._procedural.record_outcome(
+            strategy_name=strategy_name,
+            reward_before=reward_before,
+            reward_after=reward_after,
+            description=description,
+        )
+
+    def get_recommended_strategy(self) -> str | None:
+        """
+        Get recommended strategy from procedural memory.
+
+        Returns the most effective strategy based on historical performance.
+        """
+        record = self._procedural.get_recommended_strategy()
+        return record.name if record else None
+
+    def get_semantic_facts(self, max_facts: int = 10) -> list[dict]:
+        """Get learned facts from semantic memory."""
+        facts = self._semantic.get_facts(min_confidence=0.5, limit=max_facts)
+        return [
+            {
+                "type": f.fact_type.value,
+                "content": f.content,
+                "confidence": f.confidence,
+            }
+            for f in facts
+        ]
+
+    def get_strategy_stats(self) -> dict[str, Any]:
+        """Get strategy effectiveness statistics."""
+        return self._procedural.get_stats()
 
     def close(self) -> None:
         """Close database connection."""
