@@ -344,7 +344,7 @@ Benchmark:
 
 KNOWN ALGORITHM DETECTED: {evaluation.known_algorithm.algorithm_name}
 Confidence: {evaluation.known_algorithm.confidence:.0%}
-Penalty Applied: {evaluation.known_algorithm.penalty:.0%}
+Penalty Applied: {evaluation.known_algorithm.penalty_applied:.0%}
 Your score was SEVERELY reduced. Try a COMPLETELY different approach."""
 
         return f"""LAST EVALUATION: PASSED
@@ -417,7 +417,7 @@ Please fix the issues and try again.
             known_algo_warning = f"""
 KNOWN ALGORITHM DETECTED: {evaluation.known_algorithm.algorithm_name}
 Confidence: {evaluation.known_algorithm.confidence:.0%}
-Penalty Applied: {evaluation.known_algorithm.penalty:.0%}
+Penalty Applied: {evaluation.known_algorithm.penalty_applied:.0%}
 
 Your solution implements a KNOWN algorithm. This received a SEVERE score penalty.
 You MUST try a fundamentally different approach. Do not just rename variables or

@@ -99,6 +99,24 @@ archive:
       values: ["lt_7", "eq_7", "gt_7"]
   max_solutions: 100
 
+# AlphaEvolve-style evolution configuration
+evolution:
+  # Adaptive operation selection using UCB1 bandit
+  adaptive:
+    enabled: true
+    algorithm: "ucb1"  # ucb1, thompson, epsilon_greedy
+    exploration_factor: 1.0
+  # Fitness-diversity parent selection
+  parent_selection:
+    method: "fitness_diversity"
+    diversity_weight: 0.3
+  # 3-parent crossover
+  crossover_parents: 3
+  # Strategic prompt sampling
+  prompt_sampling:
+    enabled: true
+    epsilon: 0.15
+
 loop:
   max_iterations: 100
   checkpoint_interval: 10
