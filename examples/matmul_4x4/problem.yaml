@@ -1,0 +1,138 @@
+# 4x4 Matrix Multiplication Discovery
+# Goal: Beat or match Strassen's 49 multiplications for 4x4 matrices
+#
+# Current State of the Art:
+# - Standard: 64 multiplications
+# - Strassen recursive (2-level): 49 multiplications
+# - AlphaTensor (mod 2 only): 47 multiplications
+# - AlphaTensor (real numbers): 49 multiplications
+#
+# This is an open problem - finding <49 multiplications for real arithmetic
+# would be a significant mathematical discovery.
+
+problem:
+  name: "4x4 Matrix Multiplication"
+  description: |
+    Discover an algorithm for multiplying two 4x4 matrices using fewer
+    scalar multiplications than the standard algorithm (64).
+
+    TARGET: Match Strassen's 49 multiplications, or ideally beat it.
+
+    CONSTRAINTS:
+    - Must work on real numbers (not just finite fields)
+    - Must be exactly correct (no approximations)
+    - Additions/subtractions are free (only multiplications count)
+    - Must handle arbitrary 4x4 matrices
+
+    KNOWN ALGORITHMS TO AVOID (these receive penalties):
+    - Standard O(n^3) algorithm (64 multiplications)
+    - Strassen's 2x2 algorithm applied twice (49 multiplications)
+    - Winograd's variant of Strassen
+
+    HINTS FOR NOVEL APPROACHES:
+    - Think about the problem as tensor decomposition
+    - The multiplication tensor T has rank <= 49 over reals
+    - Can you find clever linear combinations?
+    - Consider asymmetric decompositions
+    - Think about which intermediate products are reusable
+
+  solution_file: "solution.py"
+  solution_interface: |
+    def matmul_4x4(A: list[list[float]], B: list[list[float]]) -> list[list[float]]:
+        """
+        Multiply two 4x4 matrices A and B.
+
+        Args:
+            A: 4x4 matrix as list of lists
+            B: 4x4 matrix as list of lists
+
+        Returns:
+            C: 4x4 matrix where C = A @ B
+
+        Constraints:
+            - Minimize scalar multiplications
+            - Additions/subtractions are free
+            - Must be exact (no floating point approximations)
+        """
+        pass
+
+evaluator:
+  correctness:
+    command: "pytest examples/matmul_4x4/tests/ -x -q --tb=short"
+    timeout: 60
+
+  benchmark:
+    command: "python examples/matmul_4x4/benchmark.py"
+    timeout: 120
+    direction: "maximize"
+    baseline_score: 0.0
+    target_score: 0.95
+    weight: 0.7
+
+  novelty:
+    enabled: true
+    weight: 0.3
+    known_algorithms:
+      enabled: true
+      penalty: 0.5
+      definitions:
+        - name: "standard_64"
+          description: "Standard O(n^3) algorithm using 64 multiplications"
+          penalty: 0.8
+          detection_patterns:
+            - "for.*for.*for"
+            - "64 multiplications"
+        - name: "strassen_recursive"
+          description: "Strassen's algorithm applied recursively (49 mults)"
+          penalty: 0.3
+          detection_patterns:
+            - "strassen"
+            - "M1.*M2.*M3.*M4.*M5.*M6.*M7"
+            - "P1.*P2.*P3.*P4.*P5.*P6.*P7"
+        - name: "winograd"
+          description: "Winograd's variant of Strassen"
+          penalty: 0.3
+          detection_patterns:
+            - "winograd"
+            - "S1.*S2.*S3.*S4"
+
+archive:
+  type: "map_elites"
+  niches:
+    - name: "mult_count"
+      type: "categorical"
+      values: ["gt_64", "eq_64", "50_to_63", "eq_49", "lt_49"]
+    - name: "approach"
+      type: "categorical"
+      values: ["recursive", "direct", "tensor", "hybrid", "other"]
+  max_solutions_per_niche: 3
+  max_total_solutions: 500
+
+evolution:
+  # AlphaEvolve-style adaptive selection
+  adaptive:
+    enabled: true
+    algorithm: "ucb1"
+    exploration_factor: 1.5  # Higher exploration for hard problem
+
+  parent_selection:
+    method: "fitness_diversity"
+    diversity_weight: 0.4  # Favor diversity for novel approaches
+
+  crossover_parents: 3
+
+  prompt_sampling:
+    enabled: true
+    epsilon: 0.2  # More exploration
+
+  # Operation rates (used as priors for adaptive)
+  mutation_rate: 0.3
+  crossover_rate: 0.2
+  explore_rate: 0.4  # High exploration for novel discovery
+  exploit_rate: 0.1
+
+loop:
+  max_iterations: 500
+  checkpoint_interval: 25
+  early_stop_iterations: 100
+  min_archive_size: 10
