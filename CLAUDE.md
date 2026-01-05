@@ -79,6 +79,16 @@ The plugin uses Claude Code hooks to create a learning loop:
 - `UniversalEvaluator`: Correctness + Benchmark + Novelty scoring
 - `SolutionArchive`: MAP-Elites niche-based storage
 - `EvolutionController`: Selects mutation/crossover/explore/exploit operations
+- `AdaptiveEvolutionController`: AlphaEvolve-style UCB1 bandit for operation selection
+
+**AlphaEvolve Extensions** (`src/obsidian/research/`)
+- `bandit.py`: Multi-armed bandits (UCB1, Thompson, Epsilon-Greedy)
+- `novelty/ast_distance.py`: AST-based structural code similarity
+- `prompt_sampler.py`: Contextual bandit for strategic prompt selection
+- `lineage.py`: Solution lineage tracking and analysis
+- `prompt_queue.py`: Prompt pre-computation for different outcomes
+
+See `docs/ALPHAEVOLVE.md` for complete documentation of these features.
 
 ### Hook Exit Codes
 - `0`: Allow stop (target achieved, circuit open, max attempts)
