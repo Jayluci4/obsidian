@@ -114,6 +114,34 @@ class ArchiveConfig:
 
 
 @dataclass
+class AdaptiveSelectionConfig:
+    """Configuration for adaptive operation selection (AlphaEvolve-style)."""
+
+    enabled: bool = False  # Off by default for backward compatibility
+    algorithm: str = "ucb1"  # ucb1, thompson, epsilon_greedy
+    exploration_factor: float = 1.0  # UCB1 exploration constant
+    epsilon: float = 0.1  # Epsilon-greedy exploration rate
+    min_trials_per_arm: int = 2  # Minimum trials before exploitation
+
+
+@dataclass
+class ParentSelectionConfig:
+    """Configuration for parent selection strategy."""
+
+    method: str = "tournament"  # tournament, fitness_diversity
+    diversity_weight: float = 0.3  # Weight for diversity in fitness_diversity mode
+    tournament_size: int = 3
+
+
+@dataclass
+class PromptSamplingConfig:
+    """Configuration for strategic prompt sampling."""
+
+    enabled: bool = False  # Off by default
+    epsilon: float = 0.1  # Exploration rate for epsilon-greedy
+
+
+@dataclass
 class EvolutionConfig:
     """Configuration for evolutionary operations."""
 
@@ -123,12 +151,20 @@ class EvolutionConfig:
     explore_prob: float = 0.3
     exploit_prob: float = 0.1
 
-    # Selection parameters
+    # Selection parameters (legacy, kept for backward compatibility)
     parent_selection: str = "tournament"  # tournament, roulette, rank
     tournament_size: int = 3
 
     # Mutation parameters
     mutation_strength: str = "medium"  # light, medium, heavy
+
+    # Multi-parent crossover
+    crossover_parents: int = 2  # 2 or 3 parents
+
+    # AlphaEvolve-style enhancements
+    adaptive: AdaptiveSelectionConfig = field(default_factory=AdaptiveSelectionConfig)
+    parent_config: ParentSelectionConfig = field(default_factory=ParentSelectionConfig)
+    prompt_sampling: PromptSamplingConfig = field(default_factory=PromptSamplingConfig)
 
 
 @dataclass
@@ -306,20 +342,60 @@ def _parse_archive(data: dict[str, Any]) -> ArchiveConfig:
     )
 
 
+def _parse_adaptive_selection(data: dict[str, Any]) -> AdaptiveSelectionConfig:
+    """Parse adaptive selection configuration."""
+    if not data:
+        return AdaptiveSelectionConfig()
+    return AdaptiveSelectionConfig(
+        enabled=data.get("enabled", False),
+        algorithm=data.get("algorithm", "ucb1"),
+        exploration_factor=data.get("exploration_factor", 1.0),
+        epsilon=data.get("epsilon", 0.1),
+        min_trials_per_arm=data.get("min_trials_per_arm", 2),
+    )
+
+
+def _parse_parent_selection(data: dict[str, Any]) -> ParentSelectionConfig:
+    """Parse parent selection configuration."""
+    if not data:
+        return ParentSelectionConfig()
+    return ParentSelectionConfig(
+        method=data.get("method", "tournament"),
+        diversity_weight=data.get("diversity_weight", 0.3),
+        tournament_size=data.get("tournament_size", 3),
+    )
+
+
+def _parse_prompt_sampling(data: dict[str, Any]) -> PromptSamplingConfig:
+    """Parse prompt sampling configuration."""
+    if not data:
+        return PromptSamplingConfig()
+    return PromptSamplingConfig(
+        enabled=data.get("enabled", False),
+        epsilon=data.get("epsilon", 0.1),
+    )
+
+
 def _parse_evolution(data: dict[str, Any]) -> EvolutionConfig:
     """Parse evolution configuration."""
     if not data:
         return EvolutionConfig()
 
     ops = data.get("operations", {})
+    selection = data.get("selection", {})
+
     return EvolutionConfig(
         mutate_prob=ops.get("mutate", 0.4),
         crossover_prob=ops.get("crossover", 0.2),
         explore_prob=ops.get("explore", 0.3),
         exploit_prob=ops.get("exploit", 0.1),
-        parent_selection=data.get("selection", {}).get("parent_selection", "tournament"),
-        tournament_size=data.get("selection", {}).get("tournament_size", 3),
+        parent_selection=selection.get("parent_selection", "tournament"),
+        tournament_size=selection.get("tournament_size", 3),
         mutation_strength=data.get("mutation_strength", "medium"),
+        crossover_parents=data.get("crossover_parents", 2),
+        adaptive=_parse_adaptive_selection(data.get("adaptive", {})),
+        parent_config=_parse_parent_selection(data.get("parent_selection", {})),
+        prompt_sampling=_parse_prompt_sampling(data.get("prompt_sampling", {})),
     )
 
 

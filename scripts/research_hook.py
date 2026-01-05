@@ -28,9 +28,15 @@ sys.path.insert(0, str(SRC_DIR))
 
 from obsidian.logging import ObsidianLogger, setup_logging
 from obsidian.research.archive import SolutionArchive
-from obsidian.research.evolution import EvolutionController, OperationType
+from obsidian.research.evolution import (
+    AdaptiveEvolutionController,
+    EvolutionController,
+    OperationType,
+    create_evolution_controller,
+)
 from obsidian.research.problem import load_problem, validate_problem
 from obsidian.research.prompt_builder import ResearchPromptBuilder
+from obsidian.research.prompt_sampler import PromptSampler
 from obsidian.research.universal_evaluator import UniversalEvaluator
 
 
@@ -106,8 +112,17 @@ def main():
             working_dir=cwd,
         )
 
-        evolution = EvolutionController(problem.evolution)
+        # Use factory to create correct controller type (adaptive or standard)
+        evolution = create_evolution_controller(problem.evolution, state_dir)
         prompt_builder = ResearchPromptBuilder(problem)
+
+        # Initialize prompt sampler if enabled
+        prompt_sampler = None
+        if problem.evolution.prompt_sampling.enabled:
+            prompt_sampler = PromptSampler(
+                db_path=state_dir / "prompt_stats.db",
+                epsilon=problem.evolution.prompt_sampling.epsilon,
+            )
 
         # Check if solution file exists
         solution_path = cwd / problem.solution_file
@@ -140,6 +155,21 @@ def main():
                 score=evaluation.score,
                 duration_ms=evaluation.duration_ms,
             )
+
+        # Record outcome for adaptive learning
+        if isinstance(evolution, AdaptiveEvolutionController):
+            prev_best = state.get("best_score", 0)
+            evolution.record_outcome(
+                score_before=prev_best,
+                score_after=evaluation.score,
+            )
+
+        # Record prompt outcome for prompt sampler
+        if prompt_sampler:
+            # Reward is the improvement over previous best
+            prev_best = state.get("best_score", 0)
+            reward = max(0, evaluation.score - prev_best)
+            prompt_sampler.record_outcome(reward)
 
         # Add to archive if passed
         if evaluation.passed:
@@ -208,6 +238,13 @@ def main():
         # Add evaluation summary
         eval_summary = prompt_builder.build_feedback_prompt(evaluation, archive)
 
+        # Add adaptive learning stats if enabled
+        adaptive_stats = ""
+        if isinstance(evolution, AdaptiveEvolutionController):
+            stats = evolution.get_operation_stats()
+            best_op = evolution.operation_bandit.get_best_arm() if stats else None
+            adaptive_stats = f"\nAdaptive Learning: Best operation = {best_op}, Stats = {stats}"
+
         # Save checkpoint periodically
         if iteration % problem.loop.checkpoint_every == 0:
             archive.save_checkpoint(state_dir / f"checkpoint_{iteration}.json")
@@ -222,7 +259,7 @@ def main():
 OBSIDIAN RESEARCH MODE - Iteration {iteration}
 {'='*60}
 
-{eval_summary}
+{eval_summary}{adaptive_stats}
 
 {'='*60}
 NEXT TASK

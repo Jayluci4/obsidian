@@ -206,10 +206,31 @@ No solutions discovered yet. You are starting fresh.
 """)
 
         elif operation.operation_type == OperationType.CROSSOVER:
-            sections.append("PARENT SOLUTIONS FOR CROSSOVER:")
-            for i, parent in enumerate(operation.parent_solutions, 1):
-                niche_str = ", ".join(f"{k}={v}" for k, v in parent.niche_values.items())
-                sections.append(f"""
+            num_parents = len(operation.parent_solutions)
+            if num_parents >= 3:
+                # Multi-parent crossover with role descriptions
+                sections.append("PARENT SOLUTIONS FOR MULTI-PARENT CROSSOVER:")
+                role_hints = [
+                    "Core algorithm provider",
+                    "Optimization source",
+                    "Edge-case/validation source",
+                ]
+                for i, parent in enumerate(operation.parent_solutions):
+                    niche_str = ", ".join(f"{k}={v}" for k, v in parent.niche_values.items())
+                    role = role_hints[i] if i < len(role_hints) else f"Parent {i + 1}"
+                    label = chr(ord('A') + i)  # A, B, C, ...
+                    sections.append(f"""
+--- Solution {label}: {role} (score: {parent.score:.4f}, niche: {niche_str}) ---
+```python
+{parent.code}
+```
+""")
+            else:
+                # Standard 2-parent crossover
+                sections.append("PARENT SOLUTIONS FOR CROSSOVER:")
+                for i, parent in enumerate(operation.parent_solutions, 1):
+                    niche_str = ", ".join(f"{k}={v}" for k, v in parent.niche_values.items())
+                    sections.append(f"""
 --- Parent {i} (score: {parent.score:.4f}, niche: {niche_str}) ---
 ```python
 {parent.code}
@@ -251,6 +272,18 @@ Make targeted improvements without complete rewrites.
 """
 
         elif op_type == OperationType.CROSSOVER:
+            num_parents = len(operation.parent_solutions) if operation.parent_solutions else 2
+            if num_parents >= 3:
+                return f"""OPERATION: MULTI-PARENT CROSSOVER
+{operation.crossover_instructions}
+
+You have {num_parents} parent solutions:
+- Solution A: Use as the foundation / core algorithm
+- Solution B: Extract optimizations and performance improvements
+- Solution C: Borrow edge-case handling and validation logic
+
+Create a hybrid that synthesizes the best ideas from all parents.
+"""
             return f"""OPERATION: CROSSOVER
 {operation.crossover_instructions}
 

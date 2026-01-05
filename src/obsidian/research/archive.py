@@ -390,6 +390,233 @@ class SolutionArchive:
 
         return max(tournament, key=lambda s: s.score)
 
+    def get_parent_for_mutation_fitness_diversity(
+        self,
+        diversity_weight: float = 0.3,
+    ) -> Solution | None:
+        """
+        Select parent balancing fitness and diversity (AlphaEvolve-style).
+
+        Args:
+            diversity_weight: Weight for diversity (0-1), rest is fitness
+
+        Returns:
+            Selected parent solution
+        """
+        if not self.all_solutions:
+            return None
+
+        solutions = list(self.all_solutions.values())
+
+        if len(solutions) == 1:
+            return solutions[0]
+
+        import random
+
+        # Compute centroid for diversity measurement
+        centroid_niche = self._compute_niche_centroid()
+
+        # Compute combined scores
+        scores = []
+        max_score = max(s.score for s in solutions)
+        min_score = min(s.score for s in solutions)
+        score_range = max_score - min_score if max_score > min_score else 1.0
+
+        for sol in solutions:
+            # Normalized fitness (0-1)
+            fitness = (sol.score - min_score) / score_range if score_range > 0 else 0.5
+
+            # Diversity as distance from centroid niche
+            diversity = self._niche_distance(sol.niche_key, centroid_niche)
+
+            # Combined score
+            combined = (1 - diversity_weight) * fitness + diversity_weight * diversity
+            scores.append((sol, combined))
+
+        # Fitness-proportionate selection (roulette wheel)
+        total = sum(s for _, s in scores)
+        if total <= 0:
+            return random.choice(solutions)
+
+        r = random.random() * total
+        cumsum = 0
+        for sol, score in scores:
+            cumsum += score
+            if cumsum >= r:
+                return sol
+
+        return scores[-1][0]
+
+    def get_parents_for_crossover_fitness_diversity(
+        self,
+        diversity_weight: float = 0.3,
+    ) -> tuple[Solution, Solution] | None:
+        """
+        Select two parents balancing fitness and diversity.
+
+        Second parent is selected to maximize diversity from first.
+        """
+        if len(self.all_solutions) < 2:
+            return None
+
+        # First parent: fitness-diversity balance
+        parent1 = self.get_parent_for_mutation_fitness_diversity(diversity_weight)
+        if parent1 is None:
+            return None
+
+        solutions = [s for s in self.all_solutions.values() if s.id != parent1.id]
+        if not solutions:
+            return None
+
+        # Second parent: maximize diversity from first while maintaining fitness
+        import random
+
+        scores = []
+        max_score = max(s.score for s in solutions)
+        min_score = min(s.score for s in solutions)
+        score_range = max_score - min_score if max_score > min_score else 1.0
+
+        for sol in solutions:
+            fitness = (sol.score - min_score) / score_range if score_range > 0 else 0.5
+            diversity = self._niche_distance(sol.niche_key, parent1.niche_key)
+            # Higher diversity weight for second parent
+            combined = (1 - diversity_weight * 1.5) * fitness + (diversity_weight * 1.5) * diversity
+            scores.append((sol, max(0.01, combined)))
+
+        total = sum(s for _, s in scores)
+        r = random.random() * total
+        cumsum = 0
+        for sol, score in scores:
+            cumsum += score
+            if cumsum >= r:
+                return (parent1, sol)
+
+        return (parent1, scores[-1][0])
+
+    def get_parents_for_multi_crossover(
+        self,
+        n: int = 3,
+        diversity_weight: float = 0.3,
+    ) -> list[Solution]:
+        """
+        Select n diverse parents for multi-parent crossover (AlphaEvolve-style).
+
+        Each subsequent parent is selected to maximize diversity from
+        already-selected parents while maintaining good fitness.
+
+        Args:
+            n: Number of parents to select
+            diversity_weight: Weight for diversity in selection
+
+        Returns:
+            List of n parent solutions (may be fewer if archive is small)
+        """
+        if not self.all_solutions:
+            return []
+
+        solutions = list(self.all_solutions.values())
+        if len(solutions) <= n:
+            return solutions
+
+        import random
+
+        selected: list[Solution] = []
+        remaining = solutions.copy()
+
+        # First parent: fitness-diversity balance
+        first = self.get_parent_for_mutation_fitness_diversity(diversity_weight)
+        if first:
+            selected.append(first)
+            remaining = [s for s in remaining if s.id != first.id]
+
+        # Subsequent parents: maximize diversity from selected
+        while len(selected) < n and remaining:
+            max_score = max(s.score for s in remaining)
+            min_score = min(s.score for s in remaining)
+            score_range = max_score - min_score if max_score > min_score else 1.0
+
+            scores = []
+            for sol in remaining:
+                fitness = (sol.score - min_score) / score_range if score_range > 0 else 0.5
+
+                # Diversity: minimum distance to any selected parent
+                min_dist = min(
+                    self._niche_distance(sol.niche_key, p.niche_key) for p in selected
+                )
+
+                # Increase diversity weight for later selections
+                dw = diversity_weight * (1 + 0.2 * len(selected))
+                combined = (1 - dw) * fitness + dw * min_dist
+                scores.append((sol, max(0.01, combined)))
+
+            # Select with probability proportional to score
+            total = sum(s for _, s in scores)
+            r = random.random() * total
+            cumsum = 0
+            next_parent = scores[-1][0]
+            for sol, score in scores:
+                cumsum += score
+                if cumsum >= r:
+                    next_parent = sol
+                    break
+
+            selected.append(next_parent)
+            remaining = [s for s in remaining if s.id != next_parent.id]
+
+        return selected
+
+    def _compute_niche_centroid(self) -> str:
+        """Compute centroid niche (most common niche values)."""
+        if not self.niches:
+            return ""
+
+        # Find niche with most solutions
+        best_niche = max(self.niches.values(), key=lambda n: len(n.solutions))
+        return best_niche.key
+
+    def _niche_distance(self, niche1: str, niche2: str) -> float:
+        """
+        Compute distance between two niches.
+
+        Returns value in [0, 1] where 1 is maximally different.
+        """
+        if niche1 == niche2:
+            return 0.0
+
+        values1 = self._parse_niche_key(niche1)
+        values2 = self._parse_niche_key(niche2)
+
+        if not values1 or not values2:
+            return 1.0
+
+        # Count matching dimensions
+        all_keys = set(values1.keys()) | set(values2.keys())
+        if not all_keys:
+            return 1.0
+
+        matches = sum(1 for k in all_keys if values1.get(k) == values2.get(k))
+        return 1.0 - (matches / len(all_keys))
+
+    def _code_distance(self, sol1: Solution, sol2: Solution) -> float:
+        """
+        Compute code distance between two solutions.
+
+        Uses simple line-based Jaccard distance.
+        """
+        lines1 = set(sol1.code.strip().split("\n"))
+        lines2 = set(sol2.code.strip().split("\n"))
+
+        if not lines1 and not lines2:
+            return 0.0
+
+        intersection = len(lines1 & lines2)
+        union = len(lines1 | lines2)
+
+        if union == 0:
+            return 0.0
+
+        return 1.0 - (intersection / union)
+
     def get_best_for_exploitation(self) -> Solution | None:
         """Get best solution for exploitation."""
         if not self.all_solutions:
