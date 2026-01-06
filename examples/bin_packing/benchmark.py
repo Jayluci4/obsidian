@@ -60,11 +60,11 @@ def generate_instance(n: int, distribution: str, bin_capacity: int = 100) -> lis
 
 def l2_lower_bound(items: list[int], bin_capacity: int) -> float:
     """
-    L2 lower bound on optimal bin count.
+    Compute lower bound on optimal bin count.
 
-    L2 = ceil(sum(s_i)/C + sum(s_i*(C-s_i))/(2*C^2))
-
-    This is tighter than the simple L1 = sum(s_i)/C bound.
+    Uses multiple bounds and takes the max:
+    - L1: Simple volume bound = sum(items) / C
+    - L2: Items > C/2 need their own bins, plus volume for rest
     """
     if not items:
         return 0
@@ -75,10 +75,20 @@ def l2_lower_bound(items: list[int], bin_capacity: int) -> float:
     # L1 bound (simple volume bound)
     l1 = total / C
 
-    # L2 correction term
-    correction = sum(s * (C - s) for s in items) / (2 * C * C)
+    # L2 bound: count large items (> C/2) that can't share bins
+    large_items = [s for s in items if s > C / 2]
+    small_items = [s for s in items if s <= C / 2]
 
-    return max(l1, l1 + correction)
+    # Large items each need a bin; remaining space can hold small items
+    large_count = len(large_items)
+    remaining_in_large = sum(C - s for s in large_items)
+    small_total = sum(small_items)
+
+    # Small items that don't fit in large item bins
+    overflow = max(0, small_total - remaining_in_large)
+    l2 = large_count + overflow / C
+
+    return max(l1, l2)
 
 
 def solve_with_priority(

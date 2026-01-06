@@ -24,10 +24,8 @@ def priority(item: int, bins: list[int]) -> list[float]:
         List of priority scores (one per bin)
         Higher score = more preferred
         Return -inf for bins where item doesn't fit
-
-    Current implementation: FunSearch-Inspired Threshold Heuristic
-    Key insight: Sometimes prefer opening new bin over bad fits.
     """
+    BIN_CAPACITY = 100
     scores = []
 
     for remaining in bins:
@@ -37,25 +35,34 @@ def priority(item: int, bins: list[int]) -> list[float]:
 
         gap = remaining - item
 
-        # Exact fit is always best
-        if gap == 0:
-            scores.append(1e9)
-
-        # "Good" fits: gap is useful (can fit common item sizes)
-        elif gap >= 25:
-            # Large gap - can likely fit another item
-            # Prefer tighter among good fits
-            scores.append(1000 - gap)
-
-        # "Acceptable" fits: small gap but not wasteful
-        elif gap >= 10:
-            scores.append(500 - gap * 2)
-
-        # "Bad" fits: small gaps (1-9) that waste space
-        # These are worse than opening a new bin!
+        # Size-adaptive approach: strategy depends on item size
+        if item > BIN_CAPACITY * 0.5:
+            # Large items (>50): prefer tight fit
+            # These items are hard to pair, so minimize waste
+            score = -gap
+        elif item > BIN_CAPACITY * 0.25:
+            # Medium items (25-50): prefer moderate gaps
+            # Leave room for small items to fill
+            if gap == 0:
+                score = 100
+            elif 20 <= gap <= 40:
+                # Good gap for pairing with another medium or small item
+                score = 80 - abs(gap - 30) * 0.5
+            else:
+                score = -gap
         else:
-            # Penalize small gaps heavily - they're often unfillable
-            scores.append(-1000 + gap * 10)
+            # Small items (<25): fill gaps efficiently
+            # Prefer gaps that leave useful remaining space or perfect fit
+            if gap == 0:
+                score = 100
+            elif gap < 10:
+                # Small gap - might waste space
+                score = 20 - gap * 2
+            else:
+                # Moderate/large gap - keep it for future items
+                score = 50 - gap * 0.5
+
+        scores.append(score)
 
     return scores
 

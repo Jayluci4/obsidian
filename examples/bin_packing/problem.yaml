@@ -64,11 +64,11 @@ problem:
 
 evaluator:
   correctness:
-    command: "pytest examples/bin_packing/tests/ -x -q --tb=short"
+    command: "pytest tests/ -x -q --tb=short"
     timeout: 60
 
   benchmark:
-    command: "python examples/bin_packing/benchmark.py"
+    command: "python benchmark.py"
     timeout: 120
     direction: "maximize"
     baseline_score: 0.85  # First Fit performance
@@ -77,7 +77,9 @@ evaluator:
 
   novelty:
     enabled: true
+    type: "ast_diff"  # AST-based structural distance (AlphaEvolve-style)
     weight: 0.2
+    k_nearest: 5
     known_algorithms:
       enabled: true
       penalty: 0.3
