@@ -19,6 +19,8 @@ from dataclasses import dataclass, field
 from pathlib import Path
 from typing import TYPE_CHECKING, Any
 
+from obsidian.research.novelty.ast_distance import compute_ast_distance
+
 if TYPE_CHECKING:
     from obsidian.research.archive import SolutionArchive
     from obsidian.research.problem import ProblemSpec
@@ -545,13 +547,13 @@ class UniversalEvaluator:
     ) -> float:
         """Compute distance between two code snippets."""
         if method == "code_diff":
-            # Simple character-level Levenshtein-like distance
-            # Normalized by max length
+            # Simple line-based Jaccard distance
             return self._normalized_edit_distance(code1, code2)
 
         elif method == "ast_diff":
-            # Would require AST parsing - simplified here
-            return self._normalized_edit_distance(code1, code2)
+            # AST-based structural distance using weighted node histograms
+            # More meaningful for algorithm discovery - captures structural similarity
+            return compute_ast_distance(code1, code2)
 
         elif method == "embedding":
             # Would require embedding model - use hash distance as proxy

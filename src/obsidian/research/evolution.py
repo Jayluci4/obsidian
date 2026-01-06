@@ -27,6 +27,7 @@ if TYPE_CHECKING:
     from obsidian.research.problem import EvolutionConfig, ProblemSpec
 
 from obsidian.research.bandit import BanditAlgorithm, BanditConfig, MultiArmedBandit
+from obsidian.research.prompt_sampler import PromptSampler, get_prompt_text
 
 
 class OperationType(Enum):
@@ -394,12 +395,16 @@ class AdaptiveEvolutionController(EvolutionController):
 
     Instead of fixed operation probabilities, learns which operations
     work best based on historical performance using UCB1 or Thompson Sampling.
+
+    Also supports strategic prompt sampling to learn which prompts work best.
     """
 
     def __init__(
         self,
         config: "EvolutionConfig",
         state_dir: Path | None = None,
+        prompt_sampling_enabled: bool = False,
+        prompt_sampling_epsilon: float = 0.1,
     ):
         super().__init__(config)
 
@@ -426,6 +431,16 @@ class AdaptiveEvolutionController(EvolutionController):
         # Multi-parent crossover operator
         self.multi_crossover_op = MultiParentCrossoverOperation()
 
+        # Strategic prompt sampler (AlphaEvolve-style)
+        self.prompt_sampling_enabled = prompt_sampling_enabled
+        self.prompt_sampler: PromptSampler | None = None
+        if prompt_sampling_enabled:
+            prompt_db_path = state_dir / "prompt_sampler.db" if state_dir else None
+            self.prompt_sampler = PromptSampler(
+                db_path=prompt_db_path,
+                epsilon=prompt_sampling_epsilon,
+            )
+
         # Track last operation for reward attribution
         self._last_operation: OperationType | None = None
         self._last_score: float | None = None
@@ -441,11 +456,14 @@ class AdaptiveEvolutionController(EvolutionController):
 
         Early iterations still favor exploration to build initial archive.
         After that, uses bandit to select based on learned performance.
+
+        If prompt sampling is enabled, uses learned prompt selection instead of random.
         """
         # Early iterations: favor exploration to build archive
         if iteration < 10 or len(archive) < 3:
             self._last_operation = OperationType.EXPLORE
-            return self.explore_op.get_context(archive, problem)
+            context = self.explore_op.get_context(archive, problem)
+            return self._apply_strategic_prompt(context, archive)
 
         # Use bandit to select operation
         selected_arm = self.operation_bandit.select()
@@ -454,16 +472,51 @@ class AdaptiveEvolutionController(EvolutionController):
 
         # Get context from appropriate operator
         if op_type == OperationType.MUTATE:
-            return self.mutate_op.get_context(archive, problem)
+            context = self.mutate_op.get_context(archive, problem)
         elif op_type == OperationType.CROSSOVER:
             # Use multi-parent crossover if configured
             if self.config.crossover_parents >= 3:
-                return self.multi_crossover_op.get_context(archive, problem)
-            return self.crossover_op.get_context(archive, problem)
+                context = self.multi_crossover_op.get_context(archive, problem)
+            else:
+                context = self.crossover_op.get_context(archive, problem)
         elif op_type == OperationType.EXPLORE:
-            return self.explore_op.get_context(archive, problem)
+            context = self.explore_op.get_context(archive, problem)
         else:  # EXPLOIT
-            return self.exploit_op.get_context(archive, problem)
+            context = self.exploit_op.get_context(archive, problem)
+
+        # Apply strategic prompt selection if enabled
+        return self._apply_strategic_prompt(context, archive)
+
+    def _apply_strategic_prompt(
+        self,
+        context: OperationContext,
+        archive: "SolutionArchive",
+    ) -> OperationContext:
+        """Apply strategic prompt sampling to operation context."""
+        if not self.prompt_sampling_enabled or self.prompt_sampler is None:
+            return context
+
+        # Select prompt using learned sampler
+        prompt_id = self.prompt_sampler.select_prompt(
+            operation_type=context.operation_type,
+            archive=archive,
+            parent_solutions=context.parent_solutions,
+            mutation_strength=self.config.mutation_strength,
+        )
+
+        # Get prompt text and update context
+        prompt_text = get_prompt_text(prompt_id)
+
+        if context.operation_type == OperationType.MUTATE:
+            context.mutation_instructions = prompt_text
+        elif context.operation_type == OperationType.CROSSOVER:
+            context.crossover_instructions = prompt_text
+        elif context.operation_type == OperationType.EXPLORE:
+            context.exploration_instructions = prompt_text
+        elif context.operation_type == OperationType.EXPLOIT:
+            context.exploitation_instructions = prompt_text
+
+        return context
 
     def record_outcome(
         self,
@@ -488,12 +541,16 @@ class AdaptiveEvolutionController(EvolutionController):
         else:
             improvement = score_after  # First solution, use absolute score
 
-        # Update bandit
+        # Update operation bandit
         self.operation_bandit.update(
             arm=self._last_operation.value,
             reward=improvement,
             success=success if success is not None else improvement > 0,
         )
+
+        # Update prompt sampler if enabled
+        if self.prompt_sampling_enabled and self.prompt_sampler is not None:
+            self.prompt_sampler.record_outcome(reward=improvement)
 
         self._last_score = score_after
 
@@ -505,17 +562,42 @@ class AdaptiveEvolutionController(EvolutionController):
         """Get the operation with best average performance."""
         return self.operation_bandit.get_best_arm()
 
+    def get_prompt_stats(self) -> dict[str, Any]:
+        """Get statistics about prompt performance."""
+        if self.prompt_sampler is None:
+            return {}
+        return self.prompt_sampler.get_stats()
+
+    def get_best_prompts(self, n: int = 5) -> list[tuple[str, float]]:
+        """Get top N prompts by average reward."""
+        if self.prompt_sampler is None:
+            return []
+        return self.prompt_sampler.get_best_prompts(n)
+
 
 def create_evolution_controller(
     config: "EvolutionConfig",
     state_dir: Path | None = None,
+    prompt_sampling_enabled: bool = False,
+    prompt_sampling_epsilon: float = 0.1,
 ) -> EvolutionController:
     """
     Factory function to create appropriate evolution controller.
 
     Returns AdaptiveEvolutionController if adaptive mode is enabled,
     otherwise returns standard EvolutionController.
+
+    Args:
+        config: Evolution configuration
+        state_dir: Directory for persistent state (bandits, prompt stats)
+        prompt_sampling_enabled: Whether to use strategic prompt sampling
+        prompt_sampling_epsilon: Exploration rate for prompt sampling
     """
     if config.adaptive.enabled:
-        return AdaptiveEvolutionController(config, state_dir)
+        return AdaptiveEvolutionController(
+            config=config,
+            state_dir=state_dir,
+            prompt_sampling_enabled=prompt_sampling_enabled,
+            prompt_sampling_epsilon=prompt_sampling_epsilon,
+        )
     return EvolutionController(config)
